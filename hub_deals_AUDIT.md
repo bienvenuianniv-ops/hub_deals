@@ -173,13 +173,29 @@ vérification en conditions réelles (vraie base + vraie tâche planifiée) à a
   valeurs via `[Environment]::GetEnvironmentVariable(..., "User")` et injection dans
   l'environnement du process avant de lancer le script. Les valeurs elles-mêmes étaient
   bien présentes dans `HKCU:\Environment` ; aucune modification de secret effectuée.
-- **Non fait volontairement, à faire par le mainteneur après le merge de cette branche
-  dans `master`** : relancer la vraie tâche planifiée "Traqueur de vols" (qui tourne sur le
-  checkout principal `C:\Users\Dell\hub_deals`) et vérifier `LastTaskResult=0` en conditions
-  réelles. La vraie base `C:\Users\Dell\hub_deals\flight_deals.db` et la tâche planifiée
-  n'ont pas été touchées par cette vérification.
+- **Correctif final (2026-08-03, avant merge)** : la revue finale de branche a trouvé 2
+  problèmes importants — `detect_anomalies.py` plantait sur une base non migrée (aucun appel
+  à `init_db()`), et un test polluait le vrai `flight_deals_log.txt` (`log()` non stubbé dans
+  `TestNotificationMentionneLaVille`). Les deux corrigés en un seul commit (`4dc220a`),
+  re-vérifiés par une re-revue ciblée : les deux corrections confirmées, aucune régression.
+  Suite passée à 11/11 tests.
 
-**Conclusion : la généralisation multi-villes fonctionne de bout en bout sur une copie
-réelle de la base (migration, insertion, détection d'anomalie, notification), sans coût API
-additionnel et sans régression sur le comportement Dakar existant. Vérification en
-conditions de production (vraie base + vraie tâche planifiée) différée à après le merge.**
+**✅ Vérification en conditions réelles, post-merge (2026-08-03 14:20-14:22)**
+
+Branche fusionnée dans `master` (fast-forward, `4326135..4dc220a`), poussée sur GitHub.
+Vérification faite directement contre le vrai environnement :
+
+- `python hub_deals_db.py` exécuté contre la **vraie** `flight_deals.db`
+  (`C:\Users\Dell\hub_deals\flight_deals.db`) : log terminé par `=== Fin d'execution ===`,
+  aucune `ERREUR`. Base passée de **505 à 539 lignes** (34 offres, mêmes 6 hubs : 9 CMN, 9
+  CDG, 9 IST, 1 ADD, 6 NBO, 0 ABJ).
+- `SELECT DISTINCT ville_depart FROM offres` sur la vraie base → **`[('Dakar',)]`** — les 505
+  lignes historiques réelles ont bien été backfillées.
+- `python detect_anomalies.py` exécuté sur la vraie base sans erreur (539 lignes, 18 relevés).
+- Tâche planifiée **"Traqueur de vols"** redéclenchée réellement (`Start-ScheduledTask`) :
+  `LastTaskResult = 0`. Log confirme une exécution complète (14:21:57 → 14:22:30), base passée
+  à **573 lignes**.
+
+**Conclusion : la généralisation multi-villes fonctionne de bout en bout, en conditions
+réelles — vraie base, vraie tâche planifiée Windows, vrai token API — sans coût API
+additionnel et sans régression sur le comportement Dakar existant. Rien en attente.**
