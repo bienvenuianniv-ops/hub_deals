@@ -43,3 +43,7 @@ python detect_anomalies.py   # analyse/diagnostic sans notifier
 ## Automatisation
 
 Tourne via la tâche planifiée Windows **"Traqueur de vols"** (~1x/jour), configurée avec `C:\Users\Dell\hub_deals` comme répertoire de travail.
+
+## Licence
+
+[MIT](LICENSE)
