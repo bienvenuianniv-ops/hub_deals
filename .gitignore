@@ -7,3 +7,6 @@ flight_deals_log.txt
 
 # Au cas ou un fichier de secrets locaux serait ajoute plus tard
 .env
+
+# Worktrees Claude Code (isolation de session, pas du code source)
+.claude/
