@@ -6,7 +6,7 @@ planifiée Windows quotidienne.
 
 **✅ Vérifié en conditions réelles le 2026-08-03 10:47** — tâche "Traqueur de vols" déclenchée manuellement après tous les correctifs ci-dessous : `LastTaskResult=0`, 6 hubs traités (BZV/FIH absents), token API et token Telegram lus depuis l'environnement et fonctionnels, `anomaly_detection.py` importé sans erreur, notification Telegram envoyée avec succès (2 anomalies), base passée de 437 à 471 lignes. Aucune erreur dans `flight_deals_log.txt`.
 
-## Fichiers (`C:\Users\Dell\`)
+## Fichiers (`C:\Users\Dell\hub_deals\`)
 
 | Fichier | Rôle |
 |---|---|
@@ -71,7 +71,7 @@ Appel direct de l'API Travelpayouts (`get_special_offers`) pour BZV et FIH : ré
    - ✅ Token du bot Telegram régénéré via BotFather le 2026-08-03 (l'ancien token, exposé en clair dans le code, est révoqué). Nouvelle valeur en place dans `HKCU:\Environment\TELEGRAM_BOT_TOKEN`.
    - Note technique : une session shell déjà ouverte avant ce changement ne verra pas les nouvelles variables (son bloc d'environnement est figé à son démarrage) — normal, pas un bug. La tâche planifiée, elle, relit l'environnement à chaque déclenchement et n'a pas besoin de reboot.
 2. ~~**Duplication de logique**~~ — **Corrigé le 2026-08-03.** Extraction dans `anomaly_detection.py` (`get_dernier_releve`, `calculer_moyennes_historiques`, `detecter_anomalies`, `SEUIL_BAISSE`). `hub_deals_db.py` et `detect_anomalies.py` importent désormais ce module au lieu de recalculer chacun leur moyenne historique. Vérifié fonctionnel de bout en bout (`detect_anomalies.py` exécuté contre la base réelle, 437 lignes).
-3. **Pas de `.gitignore` / pas de dépôt git détecté** dans `C:\Users\Dell` — ces fichiers (dont la DB et les secrets) sont dans le home directory à plat, pas dans un repo versionné isolé.
+3. ~~**Pas de `.gitignore` / pas de dépôt git détecté**~~ — **Corrigé le 2026-08-03**, voir section Migration ci-dessous.
 4. **`total_estime` statique** — le coût de rabattement Dakar→hub est un forfait fixe par hub (juillet 2026), pas recalculé dynamiquement ; peut dériver dans le temps.
 
 ## ✅ Vérification secrets — données (2026-08-03)
@@ -84,9 +84,21 @@ Scan complet de `flight_deals.db` et `flight_deals_log.txt` pour toute fuite de 
 
 **Conclusion : `hub_deals` est intégralement propre côté secrets — code (4 scripts), base SQLite et fichier de log.**
 
+## ✅ Migration vers sous-dossier dédié + git local (2026-08-03)
+
+Le projet vivait à plat dans `C:\Users\Dell` (le home directory), mélangé avec des fichiers personnels sans rapport — pas de `.gitignore`, pas de dépôt versionné.
+
+**Actions effectuées :**
+1. Création de `C:\Users\Dell\hub_deals\` et déplacement des 7 fichiers du projet (les 4 scripts, `flight_deals.db`, `flight_deals_log.txt`, `hub_deals_AUDIT.md`)
+2. `.gitignore` ajouté : exclut `flight_deals.db`, `flight_deals_log.txt` (données générées à l'exécution), `__pycache__/`, `*.pyc`, `.env`
+3. `git init` local dans `hub_deals\` + commit initial (6 fichiers versionnés, DB/log correctement ignorés) — **dépôt gardé local, pas de remote**
+4. Tâche planifiée **"Traqueur de vols"** mise à jour : `WorkingDirectory` passé de `C:\Users\Dell` à `C:\Users\Dell\hub_deals` (modifié manuellement via l'UI Planificateur de tâches, `Set-ScheduledTask`/`Register-ScheduledTask` en PowerShell ayant échoué avec "Accès refusé" en session non-élevée)
+5. **Vérifié en conditions réelles** : tâche déclenchée manuellement après migration → `LastTaskResult=0`, log écrit dans `C:\Users\Dell\hub_deals\flight_deals_log.txt` (216→234 lignes), base mise à jour au bon endroit (471→505 lignes), notification Telegram envoyée avec succès
+
 ## Prochaines actions suggérées
 
 - [x] Régénérer le token du bot Telegram (fait le 2026-08-03)
 - [x] Décider du sort de BZV/FIH → retirés le 2026-08-03 (confirmé : 0 couverture Aviasales, pas un bug)
 - [x] Fusionner la logique de détection d'anomalie → extraite dans `anomaly_detection.py` (2026-08-03)
 - [x] Vérifier absence de secrets dans le code, la DB et les logs → confirmé, rien trouvé (2026-08-03)
+- [x] Ajouter `.gitignore` et versionner le projet en git → sous-dossier `C:\Users\Dell\hub_deals\`, dépôt local créé, tâche planifiée mise à jour et vérifiée (2026-08-03)
