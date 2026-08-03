@@ -26,18 +26,18 @@ def get_dernier_releve(conn: sqlite3.Connection) -> str:
 
 def calculer_moyennes_historiques(conn: sqlite3.Connection) -> dict:
     """
-    Calcule la moyenne du total_estime par destination, sur tout
-    l'historique (tous les releves confondus).
-    Cle : (hub_origine, destination_code)
+    Calcule la moyenne du total_estime par (ville de depart, destination),
+    sur tout l'historique (tous les releves confondus).
+    Cle : (ville_depart, hub_origine, destination_code)
     """
     cur = conn.execute("""
-        SELECT hub_origine, destination_code, AVG(total_estime), COUNT(*)
+        SELECT ville_depart, hub_origine, destination_code, AVG(total_estime), COUNT(*)
         FROM offres
-        GROUP BY hub_origine, destination_code
+        GROUP BY ville_depart, hub_origine, destination_code
     """)
     moyennes = {}
-    for hub, dest_code, moyenne, nb_releves in cur.fetchall():
-        moyennes[(hub, dest_code)] = {"moyenne": moyenne, "nb_releves": nb_releves}
+    for ville, hub, dest_code, moyenne, nb_releves in cur.fetchall():
+        moyennes[(ville, hub, dest_code)] = {"moyenne": moyenne, "nb_releves": nb_releves}
     return moyennes
 
 
@@ -48,9 +48,9 @@ def detecter_anomalies(
 ) -> list:
     """
     Compare chaque offre du releve donne (par defaut le plus recent dans
-    la base) a la moyenne historique de sa destination. Renvoie la liste
-    des anomalies detectees, triees par pourcentage de baisse (la
-    meilleure affaire en premier).
+    la base) a la moyenne historique de sa destination, pour la meme ville
+    de depart. Renvoie la liste des anomalies detectees, triees par
+    pourcentage de baisse (la meilleure affaire en premier).
 
     Si mode_diagnostic=True, renvoie TOUTES les comparaisons (meme celles
     sous le seuil), pour voir ce qui se passe reellement.
@@ -60,15 +60,15 @@ def detecter_anomalies(
     moyennes = calculer_moyennes_historiques(conn)
 
     cur = conn.execute("""
-        SELECT hub_origine, destination_code, destination_nom,
+        SELECT ville_depart, hub_origine, destination_code, destination_nom,
                total_estime, date_depart, lien
         FROM offres
         WHERE date_collecte = ?
     """, (date_collecte,))
 
     resultats = []
-    for hub, dest_code, dest_nom, total_estime, date_depart, lien in cur.fetchall():
-        cle = (hub, dest_code)
+    for ville, hub, dest_code, dest_nom, total_estime, date_depart, lien in cur.fetchall():
+        cle = (ville, hub, dest_code)
         info_historique = moyennes.get(cle)
 
         if not info_historique or info_historique["nb_releves"] < 2:
@@ -82,6 +82,7 @@ def detecter_anomalies(
                 "destination": dest_nom,
                 "destination_code": dest_code,
                 "hub": hub,
+                "ville_depart": ville,
                 "prix_actuel": total_estime,
                 "moyenne_historique": round(moyenne, 2),
                 "baisse_pct": round(baisse * 100, 1),
