@@ -210,7 +210,7 @@ Trois endpoints Travelpayouts ont été testés pour obtenir les prix de rabatte
 |---|---|---|---|
 | `v1/prices/cheap` | Origine/destination direct, sans dates | ✅ 563€ | Performant, une requête par hub, précis sur les prix courants |
 | `v2/prices/latest` | Derniers prix observés | ✅ 563€ | Redondant avec v1 |
-| `v3/prices_for_dates` | Dates spécifiques | ✅ 563€ | Repli utile pour NBO si v1 vide |
+| `v3/prices_for_dates` | Dates spécifiques | — (non testé pour CMN) | Repli utile pour NBO, seule route où v1/v2 n'ont renvoyé aucune donnée |
 
 **Décision : `v1/prices/cheap` retenu comme méthode principale** (une requête par hub origin/destination), avec `v3/prices_for_dates` en repli pour NBO (qui présente parfois un délai d'indexation dans v1).
 
