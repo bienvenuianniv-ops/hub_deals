@@ -25,6 +25,12 @@ Chaque exécution enregistre les offres du jour dans `flight_deals.db`. Avec l'h
 | `hub_deals_AUDIT.md` | Journal d'audit détaillé du projet (historique des décisions et correctifs). |
 | `flight_deals.db`, `flight_deals_log.txt` | Générés à l'exécution — ignorés par git. |
 
+## Installation
+
+```
+pip install -r requirements.txt
+```
+
 ## Configuration
 
 Variables d'environnement requises (aucun secret en dur dans le code) :
