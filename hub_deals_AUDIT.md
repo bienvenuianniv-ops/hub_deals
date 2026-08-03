@@ -200,7 +200,7 @@ Vérification faite directement contre le vrai environnement :
 réelles — vraie base, vraie tâche planifiée Windows, vrai token API — sans coût API
 additionnel et sans régression sur le comportement Dakar existant. Rien en attente.**
 
-## ✅ Ajout d'Abidjan comme 2e ville de départ (Task 2, 2026-08-03)
+## ⏳ Ajout d'Abidjan comme 2e ville de départ (Task 2, 2026-08-03)
 
 ### Recherche API et sélection de la méthode
 
@@ -210,7 +210,7 @@ Trois endpoints Travelpayouts ont été testés pour obtenir les prix de rabatte
 |---|---|---|---|
 | `v1/prices/cheap` | Origine/destination direct, sans dates | ✅ 563€ | Performant, une requête par hub, précis sur les prix courants |
 | `v2/prices/latest` | Derniers prix observés | ✅ 563€ | Redondant avec v1 |
-| `v3/prices_for_dates` | Dates spécifiques | ✅ (avec 9h délai API) | Repli utile pour NBO si v1 vide |
+| `v3/prices_for_dates` | Dates spécifiques | ✅ 563€ | Repli utile pour NBO si v1 vide |
 
 **Décision : `v1/prices/cheap` retenu comme méthode principale** (une requête par hub origin/destination), avec `v3/prices_for_dates` en repli pour NBO (qui présente parfois un délai d'indexation dans v1).
 
