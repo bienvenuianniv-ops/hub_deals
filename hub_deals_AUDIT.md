@@ -102,3 +102,84 @@ Le projet vivait à plat dans `C:\Users\Dell` (le home directory), mélangé ave
 - [x] Fusionner la logique de détection d'anomalie → extraite dans `anomaly_detection.py` (2026-08-03)
 - [x] Vérifier absence de secrets dans le code, la DB et les logs → confirmé, rien trouvé (2026-08-03)
 - [x] Ajouter `.gitignore` et versionner le projet en git → sous-dossier `C:\Users\Dell\hub_deals\`, dépôt local créé, tâche planifiée mise à jour et vérifiée (2026-08-03)
+
+## ✅ Généralisation multi-villes de départ (2026-08-03)
+
+Le script ne supportait qu'une seule ville de départ implicite (Dakar), avec un coût de
+rabattement forfaitaire par hub codé en dur. Objectif : permettre d'ajouter d'autres villes
+de départ à l'avenir (ex. Abidjan) sans changement de code, juste en enrichissant une
+config.
+
+**Changements (branche `worktree-multi-ville-depart`, hors du checkout principal
+`C:\Users\Dell\hub_deals` tant qu'elle n'est pas mergée) :**
+
+1. `RABATTEMENT` restructuré en dictionnaire imbriqué `RABATTEMENT[ville][hub]` (au lieu de
+   `RABATTEMENT[hub]`). Une seule ville active pour l'instant : `"Dakar"`, avec les 6 mêmes
+   hubs et coûts qu'avant (CMN, CDG, IST, ADD, NBO, ABJ) — comportement identique, juste
+   restructuré.
+2. Nouvelle colonne `ville_depart TEXT NOT NULL DEFAULT 'Dakar'` sur la table `offres`,
+   ajoutée par une migration idempotente dans `init_db()` (`ALTER TABLE ... ADD COLUMN`
+   exécuté uniquement si la colonne est absente ; sans danger à ré-exécuter à chaque
+   lancement). Les lignes existantes (créées avant la migration) sont backfillées
+   automatiquement à `'Dakar'` par la clause `DEFAULT`, sans script de migration séparé à
+   lancer manuellement.
+3. `enregistrer_offres()` boucle désormais sur chaque ville présente dans `RABATTEMENT` et
+   insère une ligne par (ville, offre) — pour l'instant une seule ville, donc même volume
+   de lignes qu'avant.
+4. `anomaly_detection.py` : les moyennes historiques sont regroupées par
+   `(ville_depart, hub_origine, destination_code)` au lieu de `(hub_origine,
+   destination_code)` seul, pour ne jamais mélanger les moyennes de deux villes de départ
+   différentes une fois qu'une deuxième ville sera ajoutée. Chaque anomalie détectée porte
+   désormais la clé `ville_depart`.
+5. Message Telegram enrichi : mentionne désormais la ville de départ (`depuis {hub}, au
+   depart de {ville_depart}`).
+6. **Aucun coût API supplémentaire** : le nombre d'appels à `get_special_offers()` reste
+   égal au nombre de hubs (6), peu importe le nombre de villes de départ configurées —
+   c'est l'insertion en base qui se multiplie par ville, pas l'appel réseau. Ajouter une
+   ville ne coûte donc rien côté quota API.
+7. Suite `tests/` ajoutée (`unittest`, 9 tests, exécutable via
+   `python -m unittest discover -s tests -v`) : migration idempotente, backfill
+   `'Dakar'` sur une table pré-existante, non-contamination des moyennes entre deux villes
+   simulées (Dakar/Abidjan), présence de `ville_depart` dans le résultat de
+   `detecter_anomalies()`, mention de la ville dans le message Telegram.
+
+**✅ Vérification end-to-end (2026-08-03, dans le worktree, PAS contre la base/tâche planifiée réelles)**
+
+Cette branche n'est pas encore mergée dans `master` ; la tâche planifiée Windows "Traqueur
+de vols" pointe toujours vers `C:\Users\Dell\hub_deals` (code pré-fusion). Décision : valider
+ce Task 5 sur une **copie jetable** de la vraie base dans le worktree, et laisser la
+vérification en conditions réelles (vraie base + vraie tâche planifiée) à après le merge.
+
+- Copie de `flight_deals.db` placée dans le worktree (`.gitignore`, jetable) : état de
+  départ **505 lignes, pas de colonne `ville_depart`** (schéma pré-migration, confirmé par
+  `PRAGMA table_info(offres)`).
+- `python hub_deals_db.py` exécuté contre cette copie : log terminé par
+  `=== Fin d'execution ===`, **aucune ligne `ERREUR`** (recherche exhaustive dans
+  `flight_deals_log.txt`, 0 correspondance). 35 offres collectées sur ce relevé (9 CMN, 9
+  CDG, 9 IST, 1 ADD, 7 NBO, 0 ABJ), base passée de 505 à **540 lignes**.
+- Après exécution : `PRAGMA table_info(offres)` inclut bien `ville_depart` ; requête
+  `SELECT DISTINCT ville_depart FROM offres` → **`[('Dakar',)]`** (une seule ville, comme
+  attendu, `RABATTEMENT` n'en contenant qu'une pour l'instant). Les 505 lignes historiques
+  ont bien été backfillées à `'Dakar'` (pas d'autre valeur ni de `NULL`).
+- `python detect_anomalies.py` exécuté sans erreur : 540 lignes / 18 relevés, aucune
+  anomalie au-delà du seuil de -8 % sur ce relevé précis, mode diagnostic affiché (32
+  comparaisons) — chaque entrée JSON porte bien `"ville_depart": "Dakar"`.
+- Suite `tests/` : 9/9 tests passent (`python -m unittest discover -s tests -v`).
+- Note technique rencontrée pendant la vérification, sans rapport avec le code : la session
+  shell utilisée pour ce test avait été ouverte avant que `TRAVELPAYOUTS_TOKEN` etc. ne
+  soient (re)confirmés en variables d'environnement **utilisateur** Windows — comportement
+  déjà documenté plus haut dans cet audit (le bloc d'environnement d'un process est figé à
+  son démarrage). Contournement pour cette vérification ponctuelle : lecture directe des
+  valeurs via `[Environment]::GetEnvironmentVariable(..., "User")` et injection dans
+  l'environnement du process avant de lancer le script. Les valeurs elles-mêmes étaient
+  bien présentes dans `HKCU:\Environment` ; aucune modification de secret effectuée.
+- **Non fait volontairement, à faire par le mainteneur après le merge de cette branche
+  dans `master`** : relancer la vraie tâche planifiée "Traqueur de vols" (qui tourne sur le
+  checkout principal `C:\Users\Dell\hub_deals`) et vérifier `LastTaskResult=0` en conditions
+  réelles. La vraie base `C:\Users\Dell\hub_deals\flight_deals.db` et la tâche planifiée
+  n'ont pas été touchées par cette vérification.
+
+**Conclusion : la généralisation multi-villes fonctionne de bout en bout sur une copie
+réelle de la base (migration, insertion, détection d'anomalie, notification), sans coût API
+additionnel et sans régression sur le comportement Dakar existant. Vérification en
+conditions de production (vraie base + vraie tâche planifiée) différée à après le merge.**

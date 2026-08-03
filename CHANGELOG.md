@@ -11,11 +11,13 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Pro
 - `requirements.txt` (dépendance `requests`)
 - `.gitattributes` pour normaliser les fins de ligne en LF
 - `hub_deals_AUDIT.md` : journal d'audit détaillé du projet
+- Généralisation multi-villes de départ : `HUBS`/`RABATTEMENT` imbriqué (`RABATTEMENT[ville][hub]`), nouvelle colonne `ville_depart` dans `offres` (migration idempotente, backfill `'Dakar'` sur les lignes existantes), regroupement des moyennes historiques par (ville de départ, hub, destination) dans `anomaly_detection.py`, suite `tests/` (`unittest`, 9 tests) couvrant la migration et la non-contamination des moyennes entre villes
 
 ### Modifié
 - Secrets (`TRAVELPAYOUTS_TOKEN`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`) externalisés en variables d'environnement — plus aucune valeur en dur dans le code
 - `detect_anomalies.py` réécrit en wrapper CLI fin autour de `anomaly_detection.py`
 - Projet déplacé de `C:\Users\Dell\` (racine du profil) vers `C:\Users\Dell\hub_deals\` ; tâche planifiée "Traqueur de vols" mise à jour en conséquence
+- Message de notification Telegram enrichi de la ville de départ (`depuis {hub}, au depart de {ville_depart}`)
 
 ### Supprimé
 - `hub_deals.py` (script obsolète, remplacé par `hub_deals_db.py`)

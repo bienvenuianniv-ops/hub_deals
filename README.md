@@ -6,13 +6,15 @@ Détecteur de bonnes affaires vol au départ de Dakar, via des hubs de correspon
 
 ## Principe
 
-Un rabattement Dakar → hub a un coût forfaitaire connu (voir `RABATTEMENT` dans `hub_deals_db.py`). Le total estimé d'un trajet est donc :
+Un rabattement ville de départ → hub a un coût forfaitaire connu (voir `RABATTEMENT` dans `hub_deals_db.py`, imbriqué par ville puis par hub : `RABATTEMENT[ville][hub]`). Le total estimé d'un trajet est donc :
 
 ```
-total_estime = prix_vol_depuis_le_hub + cout_rabattement_dakar_hub
+total_estime = prix_vol_depuis_le_hub + cout_rabattement_ville_hub
 ```
 
-Chaque exécution enregistre les offres du jour dans `flight_deals.db`. Avec l'historique cumulé, `anomaly_detection.py` compare le prix du jour à la moyenne historique de chaque destination : une baisse ≥ 8 % déclenche une notification Telegram.
+Seule **Dakar** est active pour l'instant (une seule ville dans `RABATTEMENT`) ; ajouter une nouvelle ville de départ se fait en ajoutant une entrée à ce dictionnaire, sans autre changement de code.
+
+Chaque exécution enregistre les offres du jour dans `flight_deals.db`, avec la ville de départ (`ville_depart`). Avec l'historique cumulé, `anomaly_detection.py` compare le prix du jour à la moyenne historique de chaque destination — regroupée par ville de départ ET destination, pour ne jamais mélanger les moyennes de deux villes différentes — : une baisse ≥ 8 % déclenche une notification Telegram (qui mentionne désormais la ville de départ).
 
 ## Fichiers
 
@@ -46,6 +48,12 @@ TELEGRAM_CHAT_ID=...      # optionnel — idem
 ```
 python hub_deals_db.py       # collecte + notification
 python detect_anomalies.py   # analyse/diagnostic sans notifier
+```
+
+## Tests
+
+```
+python -m unittest discover -s tests -v
 ```
 
 ## Automatisation
