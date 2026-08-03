@@ -200,7 +200,7 @@ Vérification faite directement contre le vrai environnement :
 réelles — vraie base, vraie tâche planifiée Windows, vrai token API — sans coût API
 additionnel et sans régression sur le comportement Dakar existant. Rien en attente.**
 
-## ⏳ Ajout d'Abidjan comme 2e ville de départ (Task 2, 2026-08-03)
+## ✅ Ajout d'Abidjan comme 2e ville de départ (Task 2, 2026-08-03)
 
 ### Recherche API et sélection de la méthode
 
@@ -228,12 +228,28 @@ ABJ → NBO : 374€ / 8h
 - **ADD (Addis-Abeba) : omis** — Aucune donnée API disponible sur les 3 endpoints testés. Contrairement à ABJ→CMN et autres, ABJ→ADD ne retourne que `{}` ou `null`. L'absence de donnée API (pas une erreur de code) empêche d'estimer un coût fiable pour cette route.
 - **ABJ (Abidjan vers Abidjan) : pas d'entrée `RABATTEMENT["Abidjan"]["ABJ"]`** — Abidjan est l'une des villes de départ ET l'un des 6 hubs surveillés. Un rabattement "Abidjan → Abidjan" n'a aucun sens logistique (l'utilisateur part déjà d'Abidjan). Aucune entrée n'a été créée pour cette paire.
 
-### Vérification en conditions réelles : en attente
+### ✅ Vérification en conditions réelles (2026-08-03, post-merge)
 
-La vérification en conditions réelles (exécution du script contre la vraie base `C:\Users\Dell\hub_deals\flight_deals.db` et redéclenchement de la tâche planifiée "Traqueur de vols") sera effectuée directement par le mainteneur du projet selon la procédure définie à Task 2, Step 4-6 :
+Branche fusionnée dans `master` (fast-forward, `d79e7d4..cb33e24`), poussée sur GitHub.
+Vérification faite directement contre le vrai environnement :
 
-1. **Step 4** : Exécuter `python hub_deals_db.py` et vérifier `SELECT DISTINCT ville_depart FROM offres` → `[('Dakar',), ('Abidjan',)]`
-2. **Step 5** : Exécuter `python detect_anomalies.py` sans erreur
-3. **Step 6** : Redéclencher "Traqueur de vols" et vérifier `LastTaskResult = 0`
+- `python hub_deals_db.py` exécuté contre la **vraie** `flight_deals.db`
+  (`C:\Users\Dell\hub_deals\flight_deals.db`) : log terminé par `=== Fin d'execution ===`,
+  aucune ligne `ERREUR` (recherche exhaustive dans `flight_deals_log.txt`). Base passée de
+  **606 à 670 lignes** (64 offres enregistrées sur ce relevé : 9 CMN, 9 CDG, 9 IST, 2 ADD,
+  4 NBO, 0 ABJ — réparties en 33 lignes `Dakar` et 31 lignes `Abidjan`, cohérent avec les
+  6 hubs actifs pour Dakar contre 4 pour Abidjan).
+- `SELECT DISTINCT ville_depart FROM offres` sur la vraie base → **`[('Dakar',), ('Abidjan',)]`**
+  — les deux villes bien présentes, comme attendu.
+- `python detect_anomalies.py` exécuté sur la vraie base sans erreur (670 lignes, 21 relevés) :
+  1 anomalie détectée (Namangan depuis Istanbul, au départ de **Dakar**, -12%) — aucune anomalie
+  Abidjan sur ce relevé (attendu : `anomaly_detection.py` exige au moins 2 relevés historiques
+  par `(ville, hub, destination)`, et c'est le tout premier relevé Abidjan).
+- Tâche planifiée **"Traqueur de vols"** redéclenchée réellement (`Start-ScheduledTask`) :
+  `LastTaskResult = 0`. Log confirme une exécution complète (17:47:13 → 17:47:46, encore
+  64 offres, 33 Dakar / 31 Abidjan), base passée à **734 lignes**.
 
-**À compléter après vérification réelle** : nombre de lignes avant/après dans la base, résultat `LastTaskResult`, et résultat de `python detect_anomalies.py` avec exemples d'anomalies Abidjan détectées si présentes.
+**Conclusion : l'ajout d'Abidjan fonctionne de bout en bout, en conditions réelles — vraie
+base, vraie tâche planifiée Windows, vrai token API — sans coût API additionnel (la boucle
+d'appel API reste indexée sur `HUBS`, indépendante de `RABATTEMENT`) et sans régression sur
+le comportement Dakar existant. Rien en attente.**
