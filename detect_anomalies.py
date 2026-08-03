@@ -12,12 +12,18 @@ import sqlite3
 import json
 
 from anomaly_detection import SEUIL_BAISSE, get_dernier_releve, detecter_anomalies
+from hub_deals_db import init_db
 
 DB_PATH = "flight_deals.db"
 
 
-if __name__ == "__main__":
+def main() -> None:
     conn = sqlite3.connect(DB_PATH)
+    # Meme base que hub_deals_db.py -- la migration doit etre appliquee ici
+    # aussi, sinon les requetes qui suivent plantent sur une base pas encore
+    # migree (colonne ville_depart absente). Idempotent, sans danger sur une
+    # base deja a jour.
+    init_db(conn)
 
     dernier_releve = get_dernier_releve(conn)
     total_lignes = conn.execute("SELECT COUNT(*) FROM offres").fetchone()[0]
@@ -38,3 +44,7 @@ if __name__ == "__main__":
         print(json.dumps(anomalies, indent=2, ensure_ascii=False))
 
     conn.close()
+
+
+if __name__ == "__main__":
+    main()

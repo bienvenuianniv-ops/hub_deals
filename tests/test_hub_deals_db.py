@@ -112,8 +112,15 @@ class TestNotificationMentionneLaVille(unittest.TestCase):
         self.messages_envoyes = []
         hub_deals_db.envoyer_telegram = self.messages_envoyes.append
 
+        # evite de polluer le vrai flight_deals_log.txt avec des lignes de
+        # test (verifier_et_notifier_anomalies appelle log() a la fin)
+        self._log_original = hub_deals_db.log
+        self.messages_logges = []
+        hub_deals_db.log = self.messages_logges.append
+
     def tearDown(self):
         hub_deals_db.envoyer_telegram = self._envoyer_telegram_original
+        hub_deals_db.log = self._log_original
         self.conn.close()
 
     def test_le_message_mentionne_la_ville_de_depart(self):
