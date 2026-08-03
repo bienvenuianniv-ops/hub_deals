@@ -47,9 +47,13 @@ HUBS = {
     "ABJ": {"nom": "Abidjan"},
 }
 
-# Cout de rabattement par ville de depart -> chaque hub, base sur des prix
-# reels (juillet 2026 pour Dakar). Ajouter une ville = ajouter une entree
-# ici, meme structure -- aucun autre changement de code necessaire.
+# Cout de rabattement par ville de depart -> chaque hub. Dakar : estimation
+# manuelle arrondie (prix reels de juillet 2026). Abidjan : valeurs exactes
+# obtenues par requete directe a l'API Travelpayouts le 2026-08-03
+# (v1/prices/cheap, complete par v3/prices_for_dates pour NBO) -- ADD omis,
+# aucune donnee disponible sur ces trois endpoints pour cette route ; pas
+# d'entree ABJ->ABJ, Abidjan etant deja le hub. Ajouter une ville = ajouter
+# une entree ici, meme structure -- aucun autre changement de code necessaire.
 RABATTEMENT = {
     "Dakar": {
         "CMN": {"prix": 400, "duree_h": 4},
@@ -59,7 +63,12 @@ RABATTEMENT = {
         "NBO": {"prix": 500, "duree_h": 8},
         "ABJ": {"prix": 200, "duree_h": 2},
     },
-    # "Abidjan": { ... },  # a ajouter plus tard, meme structure
+    "Abidjan": {
+        "CMN": {"prix": 563, "duree_h": 3},
+        "CDG": {"prix": 511, "duree_h": 8},
+        "IST": {"prix": 700, "duree_h": 9},
+        "NBO": {"prix": 374, "duree_h": 8},
+    },
 }
 
 

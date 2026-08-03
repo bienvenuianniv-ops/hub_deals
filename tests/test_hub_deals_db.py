@@ -139,5 +139,19 @@ class TestNotificationMentionneLaVille(unittest.TestCase):
         self.assertIn("Dakar", self.messages_envoyes[0])
 
 
+class TestRabattementAbidjan(unittest.TestCase):
+    def test_contient_exactement_les_hubs_attendus(self):
+        self.assertIn("Abidjan", hub_deals_db.RABATTEMENT)
+        self.assertEqual(
+            set(hub_deals_db.RABATTEMENT["Abidjan"].keys()),
+            {"CMN", "CDG", "IST", "NBO"},
+        )
+
+    def test_chaque_entree_a_un_prix_et_une_duree_positifs(self):
+        for hub_iata, cout in hub_deals_db.RABATTEMENT["Abidjan"].items():
+            self.assertGreater(cout["prix"], 0, msg=f"prix invalide pour {hub_iata}")
+            self.assertGreater(cout["duree_h"], 0, msg=f"duree_h invalide pour {hub_iata}")
+
+
 if __name__ == "__main__":
     unittest.main()
