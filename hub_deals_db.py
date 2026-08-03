@@ -53,7 +53,9 @@ RABATTEMENT = {
 
 
 def init_db(conn: sqlite3.Connection) -> None:
-    """Cree la table si elle n'existe pas encore."""
+    """Cree la table si elle n'existe pas encore, et applique les
+    migrations de schema necessaires. Idempotent -- sans danger a
+    re-executer a chaque lancement du script."""
     conn.execute("""
         CREATE TABLE IF NOT EXISTS offres (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,6 +70,9 @@ def init_db(conn: sqlite3.Connection) -> None:
             lien TEXT
         )
     """)
+    colonnes = [row[1] for row in conn.execute("PRAGMA table_info(offres)")]
+    if "ville_depart" not in colonnes:
+        conn.execute("ALTER TABLE offres ADD COLUMN ville_depart TEXT NOT NULL DEFAULT 'Dakar'")
     conn.commit()
 
 
