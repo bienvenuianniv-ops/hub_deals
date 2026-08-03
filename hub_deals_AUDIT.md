@@ -199,3 +199,41 @@ Vérification faite directement contre le vrai environnement :
 **Conclusion : la généralisation multi-villes fonctionne de bout en bout, en conditions
 réelles — vraie base, vraie tâche planifiée Windows, vrai token API — sans coût API
 additionnel et sans régression sur le comportement Dakar existant. Rien en attente.**
+
+## ✅ Ajout d'Abidjan comme 2e ville de départ (Task 2, 2026-08-03)
+
+### Recherche API et sélection de la méthode
+
+Trois endpoints Travelpayouts ont été testés pour obtenir les prix de rabattement Abidjan → hubs :
+
+| Endpoint | Requête | Résultat pour ABJ→CMN | Notes |
+|---|---|---|---|
+| `v1/prices/cheap` | Origine/destination direct, sans dates | ✅ 563€ | Performant, une requête par hub, précis sur les prix courants |
+| `v2/prices/latest` | Derniers prix observés | ✅ 563€ | Redondant avec v1 |
+| `v3/prices_for_dates` | Dates spécifiques | ✅ (avec 9h délai API) | Repli utile pour NBO si v1 vide |
+
+**Décision : `v1/prices/cheap` retenu comme méthode principale** (une requête par hub origin/destination), avec `v3/prices_for_dates` en repli pour NBO (qui présente parfois un délai d'indexation dans v1).
+
+### Valeurs obtenues (2026-08-03, requête directe API)
+
+```
+ABJ → CMN : 563€ / 3h
+ABJ → CDG : 511€ / 8h
+ABJ → IST : 700€ / 9h
+ABJ → NBO : 374€ / 8h
+```
+
+### Omissions et justifications
+
+- **ADD (Addis-Abeba) : omis** — Aucune donnée API disponible sur les 3 endpoints testés. Contrairement à ABJ→CMN et autres, ABJ→ADD ne retourne que `{}` ou `null`. L'absence de donnée API (pas une erreur de code) empêche d'estimer un coût fiable pour cette route.
+- **ABJ (Abidjan vers Abidjan) : pas d'entrée `RABATTEMENT["Abidjan"]["ABJ"]`** — Abidjan est l'une des villes de départ ET l'un des 6 hubs surveillés. Un rabattement "Abidjan → Abidjan" n'a aucun sens logistique (l'utilisateur part déjà d'Abidjan). Aucune entrée n'a été créée pour cette paire.
+
+### Vérification en conditions réelles : en attente
+
+La vérification en conditions réelles (exécution du script contre la vraie base `C:\Users\Dell\hub_deals\flight_deals.db` et redéclenchement de la tâche planifiée "Traqueur de vols") sera effectuée directement par le mainteneur du projet selon la procédure définie à Task 2, Step 4-6 :
+
+1. **Step 4** : Exécuter `python hub_deals_db.py` et vérifier `SELECT DISTINCT ville_depart FROM offres` → `[('Dakar',), ('Abidjan',)]`
+2. **Step 5** : Exécuter `python detect_anomalies.py` sans erreur
+3. **Step 6** : Redéclencher "Traqueur de vols" et vérifier `LastTaskResult = 0`
+
+**À compléter après vérification réelle** : nombre de lignes avant/après dans la base, résultat `LastTaskResult`, et résultat de `python detect_anomalies.py` avec exemples d'anomalies Abidjan détectées si présentes.

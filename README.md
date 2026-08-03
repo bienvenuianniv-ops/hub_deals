@@ -12,7 +12,7 @@ Un rabattement ville de départ → hub a un coût forfaitaire connu (voir `RABA
 total_estime = prix_vol_depuis_le_hub + cout_rabattement_ville_hub
 ```
 
-Seule **Dakar** est active pour l'instant (une seule ville dans `RABATTEMENT`) ; ajouter une nouvelle ville de départ se fait en ajoutant une entrée à ce dictionnaire, sans autre changement de code.
+**Dakar** et **Abidjan** sont actives (deux villes dans `RABATTEMENT`) ; ajouter une nouvelle ville de départ se fait en ajoutant une entrée à ce dictionnaire, sans autre changement de code. Abidjan étant elle-même l'un des 6 hubs surveillés, elle n'a pas d'entrée de rabattement vers elle-même (`ABJ`), et son entrée `ADD` est omise faute de données API disponibles pour cette route.
 
 Chaque exécution enregistre les offres du jour dans `flight_deals.db`, avec la ville de départ (`ville_depart`). Avec l'historique cumulé, `anomaly_detection.py` compare le prix du jour à la moyenne historique de chaque destination — regroupée par ville de départ ET destination, pour ne jamais mélanger les moyennes de deux villes différentes — : une baisse ≥ 8 % déclenche une notification Telegram (qui mentionne désormais la ville de départ).
 
