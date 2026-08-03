@@ -1,5 +1,7 @@
 # hub_deals
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Détecteur de bonnes affaires vol au départ de Dakar, via des hubs de correspondance (Casablanca, Paris, Istanbul, Addis-Abeba, Nairobi, Abidjan). Interroge l'API Travelpayouts, stocke l'historique en SQLite, détecte les anomalies de prix par rapport à la moyenne historique, et notifie les bonnes affaires par Telegram.
 
 ## Principe
