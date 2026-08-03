@@ -38,17 +38,28 @@ LOG_PATH = "flight_deals_log.txt"
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
-# Cout de rabattement Dakar -> chaque hub, base sur des prix reels (juillet 2026)
+HUBS = {
+    "CMN": {"nom": "Casablanca"},
+    "CDG": {"nom": "Paris"},
+    "IST": {"nom": "Istanbul"},
+    "ADD": {"nom": "Addis-Abeba"},
+    "NBO": {"nom": "Nairobi"},
+    "ABJ": {"nom": "Abidjan"},
+}
+
+# Cout de rabattement par ville de depart -> chaque hub, base sur des prix
+# reels (juillet 2026 pour Dakar). Ajouter une ville = ajouter une entree
+# ici, meme structure -- aucun autre changement de code necessaire.
 RABATTEMENT = {
-    "CMN": {"prix": 400, "duree_h": 4, "nom": "Casablanca"},
-    "CDG": {"prix": 300, "duree_h": 6, "nom": "Paris"},
-    "IST": {"prix": 400, "duree_h": 7, "nom": "Istanbul"},
-    "ADD": {"prix": 500, "duree_h": 6, "nom": "Addis-Abeba"},
-    "NBO": {"prix": 500, "duree_h": 8, "nom": "Nairobi"},
-    "ABJ": {"prix": 200, "duree_h": 2, "nom": "Abidjan"},
-    # BZV (Brazzaville) et FIH (Kinshasa) retires le 2026-08-03 : l'API
-    # Travelpayouts ne renvoie jamais d'offre pour ces hubs (0/15 releves,
-    # confirme par appel direct -- pas un bug, absence de couverture Aviasales).
+    "Dakar": {
+        "CMN": {"prix": 400, "duree_h": 4},
+        "CDG": {"prix": 300, "duree_h": 6},
+        "IST": {"prix": 400, "duree_h": 7},
+        "ADD": {"prix": 500, "duree_h": 6},
+        "NBO": {"prix": 500, "duree_h": 8},
+        "ABJ": {"prix": 200, "duree_h": 2},
+    },
+    # "Abidjan": { ... },  # a ajouter plus tard, meme structure
 }
 
 
@@ -86,27 +97,33 @@ def get_special_offers(origin: str) -> list:
 
 
 def enregistrer_offres(conn: sqlite3.Connection, hub_iata: str, offres: list, date_collecte: str) -> None:
-    """Insere chaque offre du jour dans la base, avec sa date de collecte."""
-    rabattement = RABATTEMENT[hub_iata]
-    for offre in offres:
-        prix_vol = offre.get("price", 0)
-        total_estime = prix_vol + rabattement["prix"]
-        conn.execute("""
-            INSERT INTO offres (
-                date_collecte, hub_origine, destination_code, destination_nom,
-                prix_vol_hub, rabattement, total_estime, date_depart, lien
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            date_collecte,
-            rabattement["nom"],
-            offre.get("destination"),
-            offre.get("destination_name"),
-            prix_vol,
-            rabattement["prix"],
-            total_estime,
-            offre.get("departure_at"),
-            offre.get("link"),
-        ))
+    """Insere chaque offre du jour dans la base, une fois par ville de
+    depart ayant un cout de rabattement defini pour ce hub."""
+    hub_nom = HUBS[hub_iata]["nom"]
+    for ville, couts_ville in RABATTEMENT.items():
+        rabattement = couts_ville.get(hub_iata)
+        if rabattement is None:
+            continue
+        for offre in offres:
+            prix_vol = offre.get("price", 0)
+            total_estime = prix_vol + rabattement["prix"]
+            conn.execute("""
+                INSERT INTO offres (
+                    date_collecte, ville_depart, hub_origine, destination_code, destination_nom,
+                    prix_vol_hub, rabattement, total_estime, date_depart, lien
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                date_collecte,
+                ville,
+                hub_nom,
+                offre.get("destination"),
+                offre.get("destination_name"),
+                prix_vol,
+                rabattement["prix"],
+                total_estime,
+                offre.get("departure_at"),
+                offre.get("link"),
+            ))
     conn.commit()
 
 
@@ -192,8 +209,8 @@ if __name__ == "__main__":
     conn = sqlite3.connect(DB_PATH)
     init_db(conn)
 
-    for hub_iata in RABATTEMENT:
-        log(f"Recuperation des offres depuis {RABATTEMENT[hub_iata]['nom']} ({hub_iata})...")
+    for hub_iata, hub_info in HUBS.items():
+        log(f"Recuperation des offres depuis {hub_info['nom']} ({hub_iata})...")
         try:
             offres = get_special_offers(hub_iata)
             enregistrer_offres(conn, hub_iata, offres, date_collecte)
