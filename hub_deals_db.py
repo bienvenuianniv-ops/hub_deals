@@ -183,7 +183,7 @@ def verifier_et_notifier_anomalies(conn: sqlite3.Connection, date_collecte: str)
     lignes = [f"<b>{len(anomalies)} bonne(s) affaire(s) detectee(s) !</b>\n"]
     for a in anomalies:
         lignes.append(
-            f"\n<b>{a['destination']}</b> (depuis {a['hub']})\n"
+            f"\n<b>{a['destination']}</b> (depuis {a['hub']}, au depart de {a['ville_depart']})\n"
             f"{a['prix_actuel']:.0f}\u20ac (moyenne habituelle : {a['moyenne_historique']:.0f}\u20ac, "
             f"-{a['baisse_pct']:.0f}%)\n"
             f"https://www.aviasales.com{a['lien']}"

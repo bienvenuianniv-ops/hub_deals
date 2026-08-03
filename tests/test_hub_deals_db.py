@@ -104,5 +104,33 @@ class TestEnregistrerOffresMultiVilles(unittest.TestCase):
         self.assertEqual(len(villes), 2)
 
 
+class TestNotificationMentionneLaVille(unittest.TestCase):
+    def setUp(self):
+        self.conn = sqlite3.connect(":memory:")
+        hub_deals_db.init_db(self.conn)
+        self._envoyer_telegram_original = hub_deals_db.envoyer_telegram
+        self.messages_envoyes = []
+        hub_deals_db.envoyer_telegram = self.messages_envoyes.append
+
+    def tearDown(self):
+        hub_deals_db.envoyer_telegram = self._envoyer_telegram_original
+        self.conn.close()
+
+    def test_le_message_mentionne_la_ville_de_depart(self):
+        for total, date in [(600, "2026-08-01 10:00:00"), (600, "2026-08-02 10:00:00"), (500, "2026-08-03 10:00:00")]:
+            self.conn.execute("""
+                INSERT INTO offres (
+                    date_collecte, ville_depart, hub_origine, destination_code,
+                    destination_nom, prix_vol_hub, rabattement, total_estime, date_depart, lien
+                ) VALUES (?, 'Dakar', 'Casablanca', 'SID', 'Sal', 0, 0, ?, '2026-09-01T10:00:00+00:00', '/search/x')
+            """, (date, total))
+        self.conn.commit()
+
+        hub_deals_db.verifier_et_notifier_anomalies(self.conn, "2026-08-03 10:00:00")
+
+        self.assertEqual(len(self.messages_envoyes), 1)
+        self.assertIn("Dakar", self.messages_envoyes[0])
+
+
 if __name__ == "__main__":
     unittest.main()
