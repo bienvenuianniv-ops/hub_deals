@@ -1,0 +1,13 @@
+# Normalise les fins de ligne en LF dans le depot, quel que soit l'OS
+# qui commite -- evite les warnings "LF will be replaced by CRLF" sous
+# Windows et les diffs bruyants dus a des fins de ligne mixtes.
+* text=auto eol=lf
+
+*.py text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+LICENSE text eol=lf
+
+*.db binary
