@@ -24,8 +24,11 @@ Deux règles, selon la profondeur d'historique disponible :
 
 | Historique de la route | Règle appliquée | Déclenche si |
 |---|---|---|
+| < 2 relevés antérieurs | *aucune* | la route n'est pas jugée |
+| 2 ou 3 relevés, ou aucune dispersion | pourcentage | baisse ≥ 8 % sous la moyenne |
 | ≥ 4 relevés, avec dispersion | z-score | prix ≥ 1,5 écart-type sous la moyenne **et** baisse ≥ 3 % |
-| < 4 relevés, ou aucune dispersion | pourcentage | baisse ≥ 8 % sous la moyenne |
+
+Le minimum de deux relevés antérieurs (`MIN_RELEVES_HISTORIQUE`) évite de comparer le prix du jour à une observation unique : un billet d'avion bouge assez d'un jour à l'autre pour qu'une telle « référence » ne signale que du bruit.
 
 Le z-score rend le seuil relatif à la volatilité propre de chaque route : une baisse de 6 % sur une route très stable peut être plus significative qu'une baisse de 15 % sur une route erratique. Mais il demande assez de points pour que l'écart-type veuille dire quelque chose — d'où le repli en pourcentage.
 
