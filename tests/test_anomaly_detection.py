@@ -149,6 +149,30 @@ class TestDetecterAnomalies(unittest.TestCase):
 
         self.assertEqual(anomalies, [])
 
+    def test_ignore_une_route_n_ayant_qu_un_seul_releve_anterieur(self):
+        """Un point de reference unique ne fait pas un historique : le prix
+        d'un billet bouge trop d'un jour a l'autre pour qu'une comparaison
+        a une seule observation passee veuille dire quoi que ce soit. Meme
+        une chute de 50% ne doit pas remonter."""
+        _inserer_offre(self.conn, "Lome", "Le Caire", "DKR", "Dakar", 1200, "2026-08-01 10:00:00")
+        _inserer_offre(self.conn, "Lome", "Le Caire", "DKR", "Dakar", 600, "2026-08-02 10:00:00")
+
+        anomalies = anomaly_detection.detecter_anomalies(self.conn, date_collecte="2026-08-02 10:00:00")
+
+        self.assertEqual(anomalies, [])
+
+    def test_juge_la_route_des_deux_releves_anterieurs(self):
+        """Au releve suivant, la route a deux points de reference : elle
+        devient jugeable."""
+        _inserer_offre(self.conn, "Lome", "Le Caire", "DKR", "Dakar", 1200, "2026-08-01 10:00:00")
+        _inserer_offre(self.conn, "Lome", "Le Caire", "DKR", "Dakar", 1200, "2026-08-02 10:00:00")
+        _inserer_offre(self.conn, "Lome", "Le Caire", "DKR", "Dakar", 600, "2026-08-03 10:00:00")
+
+        anomalies = anomaly_detection.detecter_anomalies(self.conn, date_collecte="2026-08-03 10:00:00")
+
+        self.assertEqual(len(anomalies), 1)
+        self.assertEqual(anomalies[0]["nb_releves_historique"], 2)
+
     def test_une_hausse_n_est_pas_une_anomalie(self):
         _inserer_offre(self.conn, "Dakar", "Casablanca", "SID", "Sal", 600, "2026-08-01 10:00:00")
         _inserer_offre(self.conn, "Dakar", "Casablanca", "SID", "Sal", 600, "2026-08-02 10:00:00")

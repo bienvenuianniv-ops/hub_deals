@@ -23,6 +23,10 @@ Principe (hybride : z-score quand l'historique le permet, pourcentage sinon)
      MIN_RELEVES_ZSCORE, on retombe sur le seuil en pourcentage, qui ne
      demande pas d'estimer une dispersion.
 
+  Et en deca de MIN_RELEVES_HISTORIQUE releves anterieurs, la route n'est
+  pas jugee du tout : comparer a une observation unique reviendrait a
+  signaler le bruit quotidien d'un prix de billet.
+
   z_score = (moyenne_historique - prix_du_jour) / ecart_type_historique
 
   Un z-score de 1.5 signifie : ce prix est 1.5 ecart-type en dessous de
@@ -37,6 +41,13 @@ SEUIL_ZSCORE = 1.5  # nombre d'ecarts-types sous la moyenne pour declencher
 
 SEUIL_BAISSE = 0.08  # repli en pourcentage, utilise tant que la route n'a
                      # pas MIN_RELEVES_ZSCORE releves d'historique
+
+MIN_RELEVES_HISTORIQUE = 2  # nombre minimal de releves ANTERIEURS pour
+                            # qu'une route soit jugee. A 1, on comparerait
+                            # le prix du jour a une unique observation
+                            # passee : sur un billet d'avion, qui bouge
+                            # beaucoup d'un jour a l'autre, une telle
+                            # reference n'a pas de sens.
 
 MIN_RELEVES_ZSCORE = 4  # en dessous, l'ecart-type calcule sur si peu de
                         # points n'est pas fiable -- on prefere le seuil
@@ -136,6 +147,9 @@ def detecter_anomalies(
 
         if not info or total_estime is None:
             continue  # premiere apparition de cette route : rien a comparer
+
+        if info["nb_releves"] < MIN_RELEVES_HISTORIQUE:
+            continue  # un seul point de reference ne fait pas un historique
 
         moyenne = info["moyenne"]
         if not moyenne or moyenne <= 0:
