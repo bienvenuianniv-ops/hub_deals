@@ -309,13 +309,37 @@ def classement_du_jour(conn: sqlite3.Connection, date_collecte: str) -> list:
     return [dict(zip(colonnes, ligne)) for ligne in cur.fetchall()]
 
 
+def masquer_secrets(message: str) -> str:
+    """
+    Remplace les secrets par *** dans un message destine au log.
+
+    Necessaire parce que requests place l'URL COMPLETE dans ses exceptions
+    reseau -- token de query string compris. Le message d'erreur brut
+    contient donc le token Travelpayouts en clair, et l'URL de l'API
+    Telegram porte le token du bot dans son chemin (/bot<token>/sendMessage).
+
+    Le chat_id n'est volontairement PAS masque : il ne circule que dans le
+    corps du POST (donc jamais dans une exception), et c'est souvent un
+    nombre court -- le remplacer aveuglement mutilerait des messages
+    legitimes contenant la meme suite de chiffres.
+    """
+    for secret in (TOKEN, TELEGRAM_BOT_TOKEN):
+        if secret:
+            message = message.replace(secret, "***")
+    return message
+
+
 def log(message: str) -> None:
     """Ecrit dans la console ET dans un fichier log -- utile car quand la
     tache tourne via le Planificateur (pas depuis PowerShell), les print()
     normaux ne s'affichent nulle part et on ne peut jamais voir si ca a
-    plante ni pourquoi."""
+    plante ni pourquoi.
+
+    Le masquage des secrets se fait ici, et non chez les appelants : c'est
+    le point de passage unique de tout ce qui est journalise, donc le seul
+    endroit ou l'oubli est impossible."""
     horodatage = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-    ligne = f"[{horodatage}] {message}"
+    ligne = f"[{horodatage}] {masquer_secrets(message)}"
     print(ligne)
     with open(LOG_PATH, "a", encoding="utf-8") as f:
         f.write(ligne + "\n")
