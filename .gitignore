@@ -3,10 +3,15 @@ __pycache__/
 
 # Donnees generees a l'execution, pas du code source
 flight_deals.db
+# journaux/WAL transitoires de SQLite, presents pendant un releve en cours
+flight_deals.db-journal
+flight_deals.db-wal
+flight_deals.db-shm
 flight_deals_log.txt
 
 # Au cas ou un fichier de secrets locaux serait ajoute plus tard
 .env
+.env.*
 
 # Worktrees Claude Code (isolation de session, pas du code source)
 .claude/

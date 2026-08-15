@@ -2,6 +2,31 @@
 
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Projet personnel sans versionnage sémantique — entrées datées.
 
+## 2026-08-15
+
+### Corrigé
+- **Le seuil d'anomalie était mathématiquement inatteignable.** Le passage au z-score calculait la moyenne et l'écart-type sur *tout* l'historique, relevé du jour inclus. Un point inclus dans sa propre référence ne peut pas s'en écarter librement : avec un écart-type d'échantillon (N-1), son z-score est plafonné à `(n-1)/√n`, soit 0,71 sur 2 relevés, 1,16 sur 3 et 1,50 sur 4. Avec `SEUIL_ZSCORE = 1.5`, aucune route de moins de 4 relevés ne pouvait déclencher d'alerte, même en cas d'effondrement du prix — soit 1 014 des 1 341 routes de la base. Vérifié sur la base réelle : l'ancienne logique remontait **0 anomalie** sur le relevé du 2026-08-15, avec un z-score maximum de 1,155, exactement le plafond théorique pour n=3. `calculer_stats_historiques()` accepte désormais `exclure_date` et la détection construit sa référence **sans** le relevé jugé ; le même relevé remonte 6 anomalies.
+- Suite de tests remise au vert : elle référençait encore `calculer_moyennes_historiques()` et `enregistrer_offres()`, renommées lors du refactor précédent sans mise à jour des tests (3 erreurs + 4 échecs).
+
+### Ajouté
+
+*Les quatre entrées suivantes documentent un chantier resté non commité dans l'arbre de travail, absent du changelog jusqu'ici.*
+
+- **Matrice hubs × destinations imposée**, en remplacement de `get_special_offers`. Cet endpoint ne renvoyait que ce que contenait le cache Aviasales — majoritairement des routes CEI/Asie centrale, la base d'utilisateurs du service étant russophone. `v1/prices/cheap` impose origine **et** destination : la couverture est désormais choisie (`DESTINATIONS`, 32 villes sur 5 zones). Ajout de `construire_lien()`, l'endpoint ne renvoyant pas de lien direct, et de `EQUIVALENCES` (`CDG`/`PAR` désignent la même ville, l'API renvoie 400 si origine = destination).
+- Hubs `JNB` (Johannesburg), `CAI` (Le Caire) et `LOS` (Lagos) : 6 → 9 hubs surveillés.
+- `RABATTEMENT["Brazzaville"]` : 3e ville de départ (plusieurs valeurs estimées, signalées en commentaire, à confirmer).
+- Détection par **z-score** en remplacement du seuil en pourcentage fixe : le seuil devient relatif à la volatilité propre de chaque route. Voir la section « Corrigé » — cette bascule était inopérante en l'état.
+
+- `RABATTEMENT["Lome"]` et `RABATTEMENT["Kinshasa"]` : 4e et 5e villes de départ actives. Coûts obtenus par requête directe à l'API Travelpayouts le 2026-08-15 (`v1/prices/cheap`, complété par `v3/prices_for_dates`), même méthode que pour Abidjan. Kinshasa couvre les 9 hubs ; Lomé en couvre 7 — `ADD` et `JNB` omis, aucun prix renvoyé par aucun des deux endpoints. Ces routes avaient été jugées non couvertes le 2026-08-03, mais via `get_special_offers` uniquement ; les endpoints à origine/destination imposées les couvrent bien.
+- Repli en pourcentage (`SEUIL_BAISSE`, 8 %) quand une route a moins de `MIN_RELEVES_ZSCORE` (4) relevés d'historique ou aucune dispersion — en dessous, l'écart-type n'est pas assez fiable pour arbitrer seul.
+- Plancher `PLANCHER_BAISSE_ZSCORE` (3 %) en mode z-score : sur une route très stable, 1,5 écart-type peut ne représenter que quelques euros.
+- Champ `methode` (`"z-score"` ou `"pourcentage"`) dans chaque résultat de `detecter_anomalies()`, pour savoir quelle règle a tranché.
+- Tests : couverture des deux bugs ci-dessus (dont un test de régression sur l'atteignabilité du seuil), du repli en pourcentage, du tri, des hausses et des routes vues pour la première fois ; invariants structurels de `RABATTEMENT` valables pour toute ville présente ou future (hubs connus, prix et durées positifs, pas de rabattement vers soi-même). 13 → 28 tests.
+
+### Modifié
+- Tri des anomalies par baisse décroissante plutôt que par z-score : critère lisible et commun aux deux méthodes de détection (le z-score est absent en mode pourcentage).
+- `duree_h` documenté comme purement indicatif (il n'entre dans aucun calcul). Pour Lomé et Kinshasa, c'est la durée d'itinéraire renvoyée par l'API, escales comprises — d'où des valeurs plus élevées que les estimations « temps de vol » des premières villes.
+
 ## 2026-08-03
 
 ### Ajouté
