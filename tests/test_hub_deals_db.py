@@ -116,6 +116,19 @@ class TestEnregistrerPrixMultiVilles(unittest.TestCase):
 
         self.assertEqual(lignes_inserees, 3)
 
+    def test_n_insere_pas_de_ligne_vers_la_ville_de_depart_elle_meme(self):
+        """Une destination egale a la ville de depart donne une route
+        absurde -- « Dakar via Casablanca -> Dakar ». Les autres villes,
+        pour qui cette destination est un vrai voyage, restent inserees."""
+        lignes_inserees = hub_deals_db.enregistrer_prix(
+            self.conn, "CMN", "DKR", self._offre_test(), "2026-08-03 12:00:00")
+
+        villes = [row[0] for row in self.conn.execute("SELECT ville_depart FROM offres")]
+
+        self.assertNotIn("Dakar", villes)
+        self.assertEqual(villes, ["Abidjan"])
+        self.assertEqual(lignes_inserees, 1)
+
 
 class TestNotificationMentionneLaVille(unittest.TestCase):
     def setUp(self):
@@ -200,6 +213,16 @@ class TestRabattement(unittest.TestCase):
             set(hub_deals_db.RABATTEMENT["Lome"].keys()),
             {"CMN", "CDG", "IST", "NBO", "ABJ", "CAI", "LOS"},
         )
+
+    def test_chaque_ville_de_depart_a_un_code_iata(self):
+        """Sans code IATA, une ville de depart ne peut pas etre reconnue
+        comme destination et le filtre anti-auto-route la laisse passer
+        silencieusement. Ajouter une ville sans son code doit echouer ici,
+        pas produire des lignes « X -> X » en base."""
+        for ville in hub_deals_db.RABATTEMENT:
+            self.assertIn(
+                ville, hub_deals_db.VILLE_IATA,
+                msg=f"{ville} n'a pas de code IATA dans VILLE_IATA")
 
     def test_kinshasa_couvre_tous_les_hubs(self):
         self.assertEqual(

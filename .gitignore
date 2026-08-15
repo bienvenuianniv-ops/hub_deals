@@ -7,6 +7,8 @@ flight_deals.db
 flight_deals.db-journal
 flight_deals.db-wal
 flight_deals.db-shm
+# copies de securite prises avant une operation destructive sur la base
+flight_deals.db.sauvegarde-*
 flight_deals_log.txt
 
 # Au cas ou un fichier de secrets locaux serait ajoute plus tard

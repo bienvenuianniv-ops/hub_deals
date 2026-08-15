@@ -80,6 +80,24 @@ EQUIVALENCES = {
     "PAR": {"CDG"},
 }
 
+# Code IATA de chaque ville de depart. Sert a ne pas enregistrer de route
+# qui ramene une ville chez elle : plusieurs villes de depart figurent aussi
+# dans DESTINATIONS (DKR, ABJ, BZV, FIH), et sans ce garde-fou on produit des
+# lignes « Dakar -> via Paris -> Dakar ». L'exclusion ne peut PAS se faire
+# dans la boucle d'appels API : la route CDG->DKR reste parfaitement valable
+# pour Abidjan, Lome, Brazzaville et Kinshasa. Elle se fait donc a
+# l'insertion, ville par ville.
+#
+# Toute ville ajoutee a RABATTEMENT doit avoir son code ici -- un test
+# structurel le verifie.
+VILLE_IATA = {
+    "Dakar": "DKR",
+    "Abidjan": "ABJ",
+    "Brazzaville": "BZV",
+    "Lome": "LFW",
+    "Kinshasa": "FIH",
+}
+
 # Pause entre deux appels API -- evite de saturer Travelpayouts.
 # 9 hubs x 32 destinations, moins les auto-exclusions = 279 appels,
 # soit ~2 minutes a 0.4s. Ce total ne depend PAS du nombre de villes de
@@ -252,6 +270,9 @@ def enregistrer_prix(conn: sqlite3.Connection, hub_iata: str, dest_iata: str,
     for ville, couts_ville in RABATTEMENT.items():
         rabattement = couts_ville.get(hub_iata)
         if rabattement is None:
+            continue
+        # pas de route qui ramene la ville chez elle
+        if dest_iata == VILLE_IATA.get(ville):
             continue
         total_estime = prix_vol + rabattement["prix"]
         conn.execute("""
