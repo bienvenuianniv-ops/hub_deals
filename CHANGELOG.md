@@ -24,6 +24,7 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Pro
 - Tests : couverture des deux bugs ci-dessus (dont un test de régression sur l'atteignabilité du seuil), du repli en pourcentage, du tri, des hausses et des routes vues pour la première fois ; invariants structurels de `RABATTEMENT` valables pour toute ville présente ou future (hubs connus, prix et durées positifs, pas de rabattement vers soi-même). 13 → 28 tests.
 
 ### Modifié
+- Tâche planifiée « Traqueur de vols » : ajout d'un déclencheur **quotidien à 13h00** en plus du déclencheur d'ouverture de session, qui était jusqu'ici le seul — la collecte dépendait donc entièrement des connexions, et quelques jours sans allumer la machine créaient un trou dans l'historique dont la détection d'anomalie a besoin. `StartWhenAvailable` activé pour rattraper une exécution manquée. Restrictions batterie (`DisallowStartIfOnBatteries`, `StopIfGoingOnBatteries`) levées : sur ce portable, une session ouverte sur batterie empêchait le démarrage et un débranchement en cours de relevé tuait la tâche en laissant des données partielles, sans avertissement.
 - Tri des anomalies par baisse décroissante plutôt que par z-score : critère lisible et commun aux deux méthodes de détection (le z-score est absent en mode pourcentage).
 - `duree_h` documenté comme purement indicatif (il n'entre dans aucun calcul). Pour Lomé et Kinshasa, c'est la durée d'itinéraire renvoyée par l'API, escales comprises — d'où des valeurs plus élevées que les estimations « temps de vol » des premières villes.
 

@@ -75,7 +75,18 @@ python -m unittest discover -s tests -v
 
 ## Automatisation
 
-Tourne via la tâche planifiée Windows **"Traqueur de vols"** (~1x/jour), configurée avec `C:\Users\Dell\hub_deals` comme répertoire de travail.
+Tourne via la tâche planifiée Windows **« Traqueur de vols »**, configurée avec `C:\Users\Dell\hub_deals` comme répertoire de travail. Deux déclencheurs :
+
+| Déclencheur | Quand |
+|---|---|
+| Ouverture de session | à chaque connexion (d'où plusieurs relevés certains jours) |
+| Quotidien | tous les jours à 13h00 |
+
+Le déclencheur quotidien a été ajouté le 2026-08-15 : jusque-là la collecte reposait **uniquement** sur l'ouverture de session, donc quelques jours sans allumer la machine suffisaient à créer un trou dans l'historique — or la détection d'anomalie a besoin d'un historique régulier. `StartWhenAvailable` est activé pour rattraper une exécution manquée si la machine était éteinte à 13h00.
+
+Les restrictions batterie (`DisallowStartIfOnBatteries`, `StopIfGoingOnBatteries`) ont été levées le même jour : sur ce portable, une session ouverte sur batterie empêchait la tâche de démarrer, et un débranchement en cours de relevé la tuait en laissant des données partielles — sans le moindre avertissement.
+
+> Modifier cette tâche demande une session PowerShell **élevée** (elle réside dans le dossier racine du planificateur) ; `schtasks /Change` fonctionne sans élévation mais n'expose ni les réglages batterie ni l'ajout de déclencheur.
 
 ## Licence
 
