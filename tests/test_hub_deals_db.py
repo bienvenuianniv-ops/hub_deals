@@ -165,6 +165,66 @@ class TestNotificationMentionneLaVille(unittest.TestCase):
         self.assertIn("Dakar", self.messages_envoyes[0])
 
 
+class TestMasquageDesSecrets(unittest.TestCase):
+    """Sur erreur reseau, requests place l'URL complete dans l'exception --
+    token d'API compris. Le message part ensuite dans le log, ou il reste
+    en clair. Le masquage se fait dans log(), point de passage unique."""
+
+    def setUp(self):
+        self._token_original = hub_deals_db.TOKEN
+        self._bot_original = hub_deals_db.TELEGRAM_BOT_TOKEN
+        hub_deals_db.TOKEN = "secret_travelpayouts_abc123"
+        hub_deals_db.TELEGRAM_BOT_TOKEN = "8000000:secret_bot_xyz789"
+
+    def tearDown(self):
+        hub_deals_db.TOKEN = self._token_original
+        hub_deals_db.TELEGRAM_BOT_TOKEN = self._bot_original
+
+    def test_masque_le_token_travelpayouts(self):
+        message = hub_deals_db.masquer_secrets(
+            "ERREUR reseau : .../v1/prices/cheap?origin=CMN&token=secret_travelpayouts_abc123")
+
+        self.assertNotIn("secret_travelpayouts_abc123", message)
+        self.assertIn("token=***", message)
+
+    def test_masque_le_token_du_bot_telegram(self):
+        message = hub_deals_db.masquer_secrets(
+            "ERREUR envoi Telegram : https://api.telegram.org/bot8000000:secret_bot_xyz789/sendMessage")
+
+        self.assertNotIn("secret_bot_xyz789", message)
+
+    def test_laisse_intact_un_message_sans_secret(self):
+        message = hub_deals_db.masquer_secrets("199 routes trouvees, 914 lignes enregistrees")
+
+        self.assertEqual(message, "199 routes trouvees, 914 lignes enregistrees")
+
+    def test_ne_plante_pas_quand_aucun_secret_n_est_defini(self):
+        """Secrets absents de l'environnement : le message doit passer tel
+        quel, sans que str.replace() recoive None."""
+        hub_deals_db.TOKEN = None
+        hub_deals_db.TELEGRAM_BOT_TOKEN = None
+
+        self.assertEqual(hub_deals_db.masquer_secrets("message"), "message")
+
+    def test_log_ecrit_le_message_masque_dans_le_fichier(self):
+        """Le masquage doit s'appliquer par le seul fait d'appeler log() --
+        sinon chaque futur appel devrait y penser lui-meme."""
+        import tempfile
+
+        chemin_original = hub_deals_db.LOG_PATH
+        with tempfile.TemporaryDirectory() as dossier:
+            hub_deals_db.LOG_PATH = os.path.join(dossier, "log_test.txt")
+            try:
+                hub_deals_db.log("token=secret_travelpayouts_abc123")
+                with open(hub_deals_db.LOG_PATH, encoding="utf-8") as f:
+                    contenu = f.read()
+            finally:
+                hub_deals_db.LOG_PATH = chemin_original
+
+        self.assertNotIn("secret_travelpayouts_abc123", contenu)
+        self.assertIn("token=***", contenu)
+
+
 class TestRabattement(unittest.TestCase):
     """Invariants structurels de la table de rabattement. Ces tests valent
     pour toute ville de depart, presente ou future -- ajouter une ville la
