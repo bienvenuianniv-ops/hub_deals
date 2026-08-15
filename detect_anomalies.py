@@ -1,8 +1,9 @@
 """
 Detecteur d'anomalie de prix -- outil CLI d'analyse/diagnostic.
 
-La logique de detection (moyenne historique, seuil) est centralisee dans
-anomaly_detection.py, partagee avec hub_deals_db.py.
+La logique de detection (moyenne historique, ecart-type, z-score, avec
+repli en pourcentage quand l'historique est trop court) est centralisee
+dans anomaly_detection.py, partagee avec hub_deals_db.py.
 
 Usage :
     python3 detect_anomalies.py
@@ -11,7 +12,13 @@ Usage :
 import sqlite3
 import json
 
-from anomaly_detection import SEUIL_BAISSE, get_dernier_releve, detecter_anomalies
+from anomaly_detection import (
+    MIN_RELEVES_ZSCORE,
+    SEUIL_BAISSE,
+    SEUIL_ZSCORE,
+    detecter_anomalies,
+    get_dernier_releve,
+)
 from hub_deals_db import init_db
 
 DB_PATH = "flight_deals.db"
@@ -35,7 +42,11 @@ def main() -> None:
     anomalies = detecter_anomalies(conn)
 
     if not anomalies:
-        print(f"Aucune anomalie detectee (seuil : -{int(SEUIL_BAISSE*100)}% vs moyenne historique).\n")
+        print(
+            f"Aucune anomalie detectee (seuil : z-score >= {SEUIL_ZSCORE} des "
+            f"{MIN_RELEVES_ZSCORE} releves d'historique, sinon baisse >= "
+            f"{int(SEUIL_BAISSE * 100)}% vs moyenne historique).\n"
+        )
         print("--- Mode diagnostic : toutes les comparaisons disponibles ---\n")
         diagnostic = detecter_anomalies(conn, mode_diagnostic=True)
         print(json.dumps(diagnostic, indent=2, ensure_ascii=False))

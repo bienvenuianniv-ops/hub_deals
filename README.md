@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Détecteur de bonnes affaires vol au départ de Dakar et d'Abidjan, via des hubs de correspondance (Casablanca, Paris, Istanbul, Addis-Abeba, Nairobi, Abidjan). Interroge l'API Travelpayouts, stocke l'historique en SQLite, détecte les anomalies de prix par rapport à la moyenne historique, et notifie les bonnes affaires par Telegram.
+Détecteur de bonnes affaires vol au départ de Dakar, Abidjan, Brazzaville, Lomé et Kinshasa, via 9 hubs de correspondance (Casablanca, Paris, Istanbul, Addis-Abeba, Nairobi, Abidjan, Johannesburg, Le Caire, Lagos). Interroge l'API Travelpayouts sur une matrice imposée de 32 destinations, stocke l'historique en SQLite, détecte les anomalies de prix par rapport à l'historique de chaque route, et notifie les bonnes affaires par Telegram.
 
 ## Principe
 
@@ -12,16 +12,33 @@ Un rabattement ville de départ → hub a un coût forfaitaire connu (voir `RABA
 total_estime = prix_vol_depuis_le_hub + cout_rabattement_ville_hub
 ```
 
-**Dakar** et **Abidjan** sont actives (deux villes dans `RABATTEMENT`) ; ajouter une nouvelle ville de départ se fait en ajoutant une entrée à ce dictionnaire, sans autre changement de code. Abidjan étant elle-même l'un des 6 hubs surveillés, elle n'a pas d'entrée de rabattement vers elle-même (`ABJ`), et son entrée `ADD` est omise faute de données API disponibles pour cette route.
+Cinq villes de départ sont actives : **Dakar**, **Abidjan**, **Brazzaville**, **Lomé** et **Kinshasa**. Ajouter une ville se fait en ajoutant une entrée à `RABATTEMENT`, sans autre changement de code **et sans appel API supplémentaire** : le prix hub → destination n'est interrogé qu'une fois, puis réutilisé pour chaque ville de départ (279 appels par relevé, quel que soit le nombre de villes).
 
-Chaque exécution enregistre les offres du jour dans `flight_deals.db`, avec la ville de départ (`ville_depart`). Avec l'historique cumulé, `anomaly_detection.py` compare le prix du jour à la moyenne historique de chaque destination — regroupée par ville de départ ET destination, pour ne jamais mélanger les moyennes de deux villes différentes — : une baisse ≥ 8 % déclenche une notification Telegram (qui mentionne désormais la ville de départ).
+Une ville n'a pas d'entrée de rabattement vers un hub qui est elle-même (cas d'Abidjan, à la fois ville de départ et hub `ABJ`), ni vers un hub pour lequel l'API ne renvoie aucun prix — omis plutôt qu'estimé : `ADD` pour Abidjan, `ADD` et `JNB` pour Lomé.
+
+### Détection d'anomalie
+
+Chaque exécution enregistre les offres du jour dans `flight_deals.db`, avec la ville de départ (`ville_depart`). `anomaly_detection.py` compare ensuite le prix du jour à l'historique de sa route — clé (ville de départ, hub, destination), pour ne jamais mélanger deux villes.
+
+Deux règles, selon la profondeur d'historique disponible :
+
+| Historique de la route | Règle appliquée | Déclenche si |
+|---|---|---|
+| ≥ 4 relevés, avec dispersion | z-score | prix ≥ 1,5 écart-type sous la moyenne **et** baisse ≥ 3 % |
+| < 4 relevés, ou aucune dispersion | pourcentage | baisse ≥ 8 % sous la moyenne |
+
+Le z-score rend le seuil relatif à la volatilité propre de chaque route : une baisse de 6 % sur une route très stable peut être plus significative qu'une baisse de 15 % sur une route erratique. Mais il demande assez de points pour que l'écart-type veuille dire quelque chose — d'où le repli en pourcentage.
+
+**Point critique :** le relevé jugé est exclu de sa propre référence. Sinon il tire la moyenne vers lui et se compare à une référence qu'il a lui-même déformée, ce qui plafonne mécaniquement le z-score à `(n-1)/√n` — 0,71 sur 2 relevés, 1,16 sur 3, 1,50 sur 4. Un seuil à 1,5 devient alors inatteignable en dessous de 4 relevés, quelle que soit l'ampleur de la baisse (voir CHANGELOG du 2026-08-15).
+
+Toute anomalie déclenche une notification Telegram, qui mentionne la ville de départ.
 
 ## Fichiers
 
 | Fichier | Rôle |
 |---|---|
 | `hub_deals_db.py` | Script principal : récupère les offres, les enregistre en base, notifie les anomalies. C'est lui qu'exécute la tâche planifiée. |
-| `anomaly_detection.py` | Logique partagée de détection d'anomalie (moyenne historique, seuil), utilisée par les deux scripts ci-dessous. |
+| `anomaly_detection.py` | Logique partagée de détection d'anomalie (moyenne et écart-type historiques, z-score avec repli en pourcentage), utilisée par les deux scripts ci-dessous. |
 | `detect_anomalies.py` | Outil CLI d'analyse/diagnostic — relit la base et affiche les comparaisons, sans notifier. |
 | `test_travelpayouts.py` | Script de test brut de l'API Travelpayouts. |
 | `hub_deals_AUDIT.md` | Journal d'audit détaillé du projet (historique des décisions et correctifs). |

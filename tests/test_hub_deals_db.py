@@ -56,7 +56,7 @@ class TestInitDbMigration(unittest.TestCase):
         self.assertEqual(ville, "Dakar")
 
 
-class TestEnregistrerOffresMultiVilles(unittest.TestCase):
+class TestEnregistrerPrixMultiVilles(unittest.TestCase):
     def setUp(self):
         self.conn = sqlite3.connect(":memory:")
         hub_deals_db.init_db(self.conn)
@@ -76,32 +76,45 @@ class TestEnregistrerOffresMultiVilles(unittest.TestCase):
         self.conn.close()
 
     def _offre_test(self, prix=100):
+        # forme renvoyee par v1/prices/cheap pour UNE route
         return {
-            "destination": "SID",
-            "destination_name": "Sal",
             "price": prix,
+            "airline": "AT",
             "departure_at": "2026-09-01T10:00:00+00:00",
-            "link": "/search/CMN0109SID1",
+            "return_at": "2026-09-15T10:00:00+00:00",
         }
 
     def test_insere_une_ligne_par_ville_ayant_un_cout_pour_ce_hub(self):
-        hub_deals_db.enregistrer_offres(self.conn, "CMN", [self._offre_test()], "2026-08-03 12:00:00")
+        lignes_inserees = hub_deals_db.enregistrer_prix(
+            self.conn, "CMN", "SID", self._offre_test(), "2026-08-03 12:00:00")
 
         lignes = self.conn.execute(
             "SELECT ville_depart, total_estime FROM offres ORDER BY ville_depart"
         ).fetchall()
 
+        self.assertEqual(lignes_inserees, 2)
         self.assertEqual(len(lignes), 2)
         self.assertEqual(lignes, [("Abidjan", 250.0), ("Dakar", 500.0)])
 
     def test_ignore_une_ville_sans_cout_defini_pour_ce_hub(self):
         hub_deals_db.RABATTEMENT["Nairobi"] = {}  # aucune entree pour CMN
 
-        hub_deals_db.enregistrer_offres(self.conn, "CMN", [self._offre_test()], "2026-08-03 12:00:00")
+        hub_deals_db.enregistrer_prix(
+            self.conn, "CMN", "SID", self._offre_test(), "2026-08-03 12:00:00")
 
         villes = [row[0] for row in self.conn.execute("SELECT ville_depart FROM offres")]
         self.assertNotIn("Nairobi", villes)
         self.assertEqual(len(villes), 2)
+
+    def test_n_interroge_l_api_qu_une_fois_par_couple_hub_destination(self):
+        """La ligne par ville est produite a partir d'UNE seule offre :
+        ajouter une ville de depart ne doit pas multiplier les appels API."""
+        hub_deals_db.RABATTEMENT["Lome"] = {"CMN": {"prix": 300, "duree_h": 4}}
+
+        lignes_inserees = hub_deals_db.enregistrer_prix(
+            self.conn, "CMN", "SID", self._offre_test(), "2026-08-03 12:00:00")
+
+        self.assertEqual(lignes_inserees, 3)
 
 
 class TestNotificationMentionneLaVille(unittest.TestCase):
@@ -139,18 +152,60 @@ class TestNotificationMentionneLaVille(unittest.TestCase):
         self.assertIn("Dakar", self.messages_envoyes[0])
 
 
-class TestRabattementAbidjan(unittest.TestCase):
-    def test_contient_exactement_les_hubs_attendus(self):
-        self.assertIn("Abidjan", hub_deals_db.RABATTEMENT)
+class TestRabattement(unittest.TestCase):
+    """Invariants structurels de la table de rabattement. Ces tests valent
+    pour toute ville de depart, presente ou future -- ajouter une ville la
+    fait automatiquement verifier."""
+
+    def test_les_villes_de_depart_attendues_sont_presentes(self):
         self.assertEqual(
-            set(hub_deals_db.RABATTEMENT["Abidjan"].keys()),
-            {"CMN", "CDG", "IST", "NBO"},
+            set(hub_deals_db.RABATTEMENT.keys()),
+            {"Dakar", "Abidjan", "Brazzaville", "Lome", "Kinshasa"},
         )
 
+    def test_chaque_hub_reference_existe_dans_HUBS(self):
+        for ville, couts in hub_deals_db.RABATTEMENT.items():
+            for hub_iata in couts:
+                self.assertIn(
+                    hub_iata, hub_deals_db.HUBS,
+                    msg=f"{ville} reference le hub inconnu {hub_iata}")
+
     def test_chaque_entree_a_un_prix_et_une_duree_positifs(self):
-        for hub_iata, cout in hub_deals_db.RABATTEMENT["Abidjan"].items():
-            self.assertGreater(cout["prix"], 0, msg=f"prix invalide pour {hub_iata}")
-            self.assertGreater(cout["duree_h"], 0, msg=f"duree_h invalide pour {hub_iata}")
+        for ville, couts in hub_deals_db.RABATTEMENT.items():
+            for hub_iata, cout in couts.items():
+                self.assertGreater(
+                    cout["prix"], 0, msg=f"prix invalide pour {ville}->{hub_iata}")
+                self.assertGreater(
+                    cout["duree_h"], 0, msg=f"duree_h invalide pour {ville}->{hub_iata}")
+
+    def test_aucune_ville_n_a_de_rabattement_vers_son_propre_hub(self):
+        """Abidjan est a la fois ville de depart et hub : il ne doit pas y
+        avoir de cout pour s'y rabattre depuis elle-meme."""
+        for ville, couts in hub_deals_db.RABATTEMENT.items():
+            noms_hubs = {hub_deals_db.HUBS[h]["nom"] for h in couts}
+            self.assertNotIn(
+                ville, noms_hubs,
+                msg=f"{ville} a un cout de rabattement vers elle-meme")
+
+    def test_abidjan_contient_exactement_les_hubs_attendus(self):
+        self.assertEqual(
+            set(hub_deals_db.RABATTEMENT["Abidjan"].keys()),
+            {"CMN", "CDG", "IST", "NBO", "JNB", "CAI", "LOS"},
+        )
+
+    def test_lome_omet_les_hubs_sans_donnee_reelle(self):
+        """ADD et JNB n'ont de prix sur aucun des endpoints Travelpayouts
+        au depart de Lome : on les omet plutot que d'inventer une valeur."""
+        self.assertEqual(
+            set(hub_deals_db.RABATTEMENT["Lome"].keys()),
+            {"CMN", "CDG", "IST", "NBO", "ABJ", "CAI", "LOS"},
+        )
+
+    def test_kinshasa_couvre_tous_les_hubs(self):
+        self.assertEqual(
+            set(hub_deals_db.RABATTEMENT["Kinshasa"].keys()),
+            set(hub_deals_db.HUBS.keys()),
+        )
 
 
 if __name__ == "__main__":
