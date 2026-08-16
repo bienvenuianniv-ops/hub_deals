@@ -36,6 +36,20 @@ Le z-score rend le seuil relatif à la volatilité propre de chaque route : une 
 
 Toute anomalie déclenche une notification Telegram, qui mentionne la ville de départ.
 
+### Rabattement mesuré à l'alerte
+
+Le total stocké en base utilise la table `RABATTEMENT`, qui vieillit : mesuré le 2026-08-16,
+l'écart entre la table et l'API va de −4 % à +171 % selon l'ancienneté de la valeur, et 17 des
+40 segments n'ont aucun prix API (dont `CDG` pour les cinq villes).
+
+Au moment d'envoyer une alerte, le coût réel du trajet ville → hub est donc mesuré, et appliqué
+**à la fois** au prix du jour et à la moyenne historique — le rabattement étant une constante
+additive de tout l'historique d'une route, ce décalage préserve l'écart absolu et le z-score.
+Chaque ligne d'alerte indique si le rabattement a été mesuré ou s'il vient de la table.
+
+Cette correction est **d'affichage uniquement** : rien n'est réécrit en base, et la détection
+travaille toujours sur les mêmes valeurs qu'avant.
+
 ## Fichiers
 
 | Fichier | Rôle |

@@ -340,6 +340,110 @@ def classement_du_jour(conn: sqlite3.Connection, date_collecte: str) -> list:
     return [dict(zip(colonnes, ligne)) for ligne in cur.fetchall()]
 
 
+def mesurer_rabattements(couples, get_prix=None, pause: bool = True) -> dict:
+    """
+    Interroge l'API pour le cout reel de chaque trajet ville -> hub.
+
+    La table RABATTEMENT vieillit : mesure du 2026-08-16, 23 des 40
+    segments ont un prix API, avec des ecarts allant de -4 % a +171 %
+    selon l'anciennete de la valeur. On mesure donc au moment de
+    l'alerte, sans jamais toucher a ce qui est enregistre en base.
+
+    `couples` porte le NOM du hub (« Paris »), comme la colonne
+    hub_origine des anomalies -- pas le code IATA.
+
+    Renvoie {(ville, hub_nom): {"prix", "table", "mesure"}}. `table` est
+    rendue avec la mesure pour que le calcul du decalage reste une
+    fonction pure de son entree.
+    """
+    if get_prix is None:
+        get_prix = get_prix_route
+
+    iata_par_nom = {info["nom"]: iata for iata, info in HUBS.items()}
+    mesures = {}
+
+    # dict.fromkeys dedoublonne en preservant l'ordre : plusieurs
+    # anomalies partagent souvent le meme couple, un seul appel suffit
+    for ville, hub_nom in dict.fromkeys(couples):
+        hub_iata = iata_par_nom.get(hub_nom)
+        if hub_iata is None:
+            continue  # nom inconnu : on ignore plutot que de lever
+
+        cout = RABATTEMENT.get(ville, {}).get(hub_iata)
+        if cout is None:
+            continue  # pas de rabattement connu pour ce couple
+
+        repli = {"prix": cout["prix"], "table": cout["prix"], "mesure": False}
+        origine = VILLE_IATA.get(ville)
+        if origine is None:
+            mesures[(ville, hub_nom)] = repli
+            continue
+
+        try:
+            offre = get_prix(origine, hub_iata)
+        except requests.exceptions.RequestException as e:
+            # log() masque les secrets : l'URL de l'exception porte le token
+            log(f"   -> rabattement {origine}->{hub_iata} non mesure : {e}")
+            mesures[(ville, hub_nom)] = repli
+            continue
+
+        if pause:
+            time.sleep(PAUSE_ENTRE_APPELS)
+
+        if offre and offre.get("price"):
+            mesures[(ville, hub_nom)] = {
+                "prix": offre["price"],
+                "table": cout["prix"],
+                "mesure": True,
+            }
+        else:
+            mesures[(ville, hub_nom)] = repli
+
+    return mesures
+
+
+def corriger_anomalies(anomalies: list, mesures: dict) -> list:
+    """
+    Applique le rabattement mesure au prix du jour ET a la moyenne.
+
+    Le rabattement est une constante additive de tout l'historique d'une
+    route : la meme valeur entre dans chacune de ses lignes. Decaler les
+    deux du meme montant preserve donc exactement l'ecart absolu et
+    l'ecart-type, donc le z-score. Seul le pourcentage change, son
+    denominateur ayant augmente.
+
+    Hypothese assumee : on substitue une constante a une autre. Le total
+    affiche est « ce que vaudrait cette route si le rabattement mesure
+    aujourd'hui s'appliquait a tout l'historique ». C'est la seule
+    transformation qui garde tous les chiffres du message coherents.
+
+    Les anomalies d'origine ne sont pas modifiees.
+    """
+    corrigees = []
+    for a in anomalies:
+        b = dict(a)
+        mesure = mesures.get((a["ville_depart"], a["hub"]))
+
+        if mesure and mesure["mesure"]:
+            delta = mesure["prix"] - mesure["table"]
+            b["prix_actuel"] = a["prix_actuel"] + delta
+            b["moyenne_historique"] = a["moyenne_historique"] + delta
+            if b["moyenne_historique"] > 0:
+                b["baisse_pct"] = round(
+                    (b["moyenne_historique"] - b["prix_actuel"])
+                    / b["moyenne_historique"] * 100, 1)
+            b["rabattement_mesure"] = mesure["prix"]
+        else:
+            b["rabattement_mesure"] = None
+
+        corrigees.append(b)
+
+    # le decalage change les pourcentages : sans re-tri, l'ordre affiche
+    # ne correspondrait plus aux pourcentages affiches
+    corrigees.sort(key=lambda x: x["baisse_pct"], reverse=True)
+    return corrigees
+
+
 def masquer_secrets(message: str) -> str:
     """
     Remplace les secrets par *** dans un message destine au log.
@@ -404,12 +508,31 @@ def verifier_et_notifier_anomalies(conn: sqlite3.Connection, date_collecte: str)
         log("Aucune anomalie a notifier pour ce releve.")
         return
 
+    # cout reel du trajet vers le hub, mesure maintenant : la table
+    # RABATTEMENT vieillit (jusqu'a +171 % d'ecart mesure le 2026-08-16)
+    couples = [(a["ville_depart"], a["hub"]) for a in anomalies]
+    try:
+        mesures = mesurer_rabattements(couples)
+    except Exception as e:
+        # une alerte aux totaux non corriges vaut mieux qu'une alerte perdue
+        log(f"   -> mesure des rabattements impossible : {e}")
+        mesures = {}
+    anomalies = corriger_anomalies(anomalies, mesures)
+
+    nb_mesures = sum(1 for a in anomalies if a["rabattement_mesure"] is not None)
+    log(f"Rabattement mesure pour {nb_mesures}/{len(anomalies)} anomalie(s).")
+
     lignes = [f"<b>{len(anomalies)} bonne(s) affaire(s) detectee(s) !</b>\n"]
     for a in anomalies:
+        if a["rabattement_mesure"] is not None:
+            note = f"Rabattement mesure ce jour : {a['rabattement_mesure']:.0f}\u20ac"
+        else:
+            note = "Rabattement estime, non mesure ce jour"
         lignes.append(
             f"\n<b>{a['destination']}</b> (depuis {a['hub']}, au depart de {a['ville_depart']})\n"
             f"{a['prix_actuel']:.0f}\u20ac (moyenne habituelle : {a['moyenne_historique']:.0f}\u20ac, "
             f"-{a['baisse_pct']:.0f}%)\n"
+            f"{note}\n"
             f"https://www.aviasales.com{a['lien']}"
         )
     message = "\n".join(lignes)

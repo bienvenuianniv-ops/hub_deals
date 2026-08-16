@@ -339,3 +339,91 @@ Trois tests du plan étaient faux et ont été corrigés :
 
 Le même piège que le point 2 s'est reproduit pendant la vérification finale : `--surveiller BKK`
 n'aurait rien prouvé (`nb_perso = 0`), d'où le choix de `SIN`.
+
+## ✅ Rabattement mesuré au moment de l'alerte (2026-08-16)
+
+Suite du chantier précédent, qui avait laissé ce problème hors scope. Suite passée de **80 à 97
+tests**. Spec et plan dans `docs/superpowers/`.
+
+### La mesure a reconfiguré le problème
+
+La spec de la recherche de billet parlait d'un sous-dimensionnement de 17 à 31 %, sur deux
+mesures ponctuelles. Les 40 segments (ville, hub) de `RABATTEMENT` ont été interrogés :
+
+| Constat | Valeur |
+|---|---|
+| Segments avec un prix API | 23 / 40 |
+| Segments sans aucun prix | 17 / 40 |
+| Écart médian | +0 % |
+| Sous-estimés | 12 |
+| Sur-estimés | 3 |
+
+**Ce n'est pas un sous-dimensionnement, c'est du vieillissement.** Kinshasa et Lomé, relevés par
+API la veille, collent à +0 % sur 11 segments. Les dérives touchent les valeurs anciennes :
+Brazzaville → Lagos **+171 %**, Abidjan → Nairobi +136 %, Abidjan → Le Caire +110 %,
+Dakar → Abidjan +104 %, Brazzaville → Le Caire +59 %. Les « 17 à 31 % » cités étaient les deux
+plus petits écarts du lot. Trois segments sont au contraire **sur**-estimés (Abidjan → Istanbul
+−4 %) : une correction qui n'aurait su que rehausser les aurait empirés.
+
+**`CDG` n'a de prix pour aucune des 5 villes.** Or Paris sort en tête de la plupart des meilleurs
+totaux. L'indisponibilité de la mesure est donc le cas courant sur le hub le plus utile, pas un
+cas limite.
+
+### Conception retenue
+
+But déclaré par l'utilisateur : **l'exactitude du chiffre affiché**, la détection n'étant pas en
+cause. D'où une correction **d'affichage uniquement**, appliquée au moment de l'alerte :
+
+1. `mesurer_rabattements()` — seule couche réseau, dédoublonne les couples, replie sur la table.
+2. `corriger_anomalies()` — fonction pure : décale le prix du jour **et** la moyenne du même
+   montant, puis re-trie.
+3. `verifier_et_notifier_anomalies()` — enchaîne les deux et compose le message.
+
+Le décalage est exact parce que le rabattement est une **constante additive** de tout
+l'historique d'une route : l'écart absolu et l'écart-type sont préservés, donc le z-score. Seul
+le pourcentage change. Hypothèse assumée et écrite dans le code : on substitue une constante à
+une autre.
+
+**Rejeté :** rafraîchir la table à chaque relevé (+40 appels) rendrait `rabattement` variable, sa
+variance s'ajouterait à celle du vol principal et le z-score se déclencherait sur des baisses du
+trajet vers le hub. **Rejeté :** rehausser la table ferait sauter `total_estime` d'un coup, la
+moyenne historique resterait basse et plus aucune anomalie ne se déclencherait pendant plusieurs
+jours.
+
+### ✅ Vérification en conditions réelles (relevé du 2026-08-16 10:02:45)
+
+203 routes, 915 lignes, sortie 0, `Rabattement mesure pour 2/3 anomalie(s).`
+
+| Point | Résultat |
+|---|---|
+| `total_estime` stocké inchangé | **0 / 915** ligne incohérente avec `prix_vol_hub + rabattement` de la table |
+| Décalage affiché = mesuré − table | **125 = 125** et **−28 = −28** |
+| Écart absolu préservé | 42 € → 42 € sur les deux routes mesurées |
+| Pourcentages décroissants | `[4.5, 3.9, 3.5]` |
+| Token en clair dans le journal | 0 occurrence |
+| Tâche planifiée | `LastTaskResult = 0` |
+
+Effet concret : `Dakar → New York via Istanbul` était annoncé **769 €**, le vrai total est
+**894 €**. Et `Abidjan → New York via Istanbul` **baisse** de 28 € (rabattement mesuré 672 €
+contre 700 € en table) — la correction joue bien dans les deux sens.
+
+Réserve : le décalage n'a pas *inversé* l'ordre sur ce relevé, le re-tri n'a donc pas été
+sollicité en conditions réelles. Il reste couvert par un test unitaire construisant une
+inversion.
+
+### Deux défauts du plan, rattrapés à l'exécution
+
+1. **Un test préexistant faisait un vrai appel API.** `TestNotificationMentionneLaVille` appelait
+   `verifier_et_notifier_anomalies` sans neutraliser la mesure ; la greffe lui a donc ajouté un
+   appel Travelpayouts et sa pause de 0,4 s. Le plan posait « aucun appel réseau dans les tests »
+   en contrainte globale mais n'avait pas recensé les **appelants existants** de la fonction
+   modifiée. Repéré parce que la suite est passée de 0,36 s à 2,56 s — la durée de la suite est
+   un détecteur d'appel réseau involontaire.
+2. **Les tests écrivaient dans `flight_deals_log.txt`**, y compris des lignes
+   « Notification Telegram envoyee » qui constituent un faux témoignage dans un journal
+   d'exploitation. 15 lignes retirées ; la suite n'écrit désormais plus rien (vérifié en
+   comparant le nombre de lignes avant et après une exécution complète).
+
+**Leçon :** modifier une fonction impose de recenser ses appelants dans les tests, pas seulement
+d'écrire les nouveaux. Et toute fonction appelant `log()` doit voir `log()` neutralisé dans ses
+tests, sans quoi le journal d'exploitation devient un mélange de réel et de simulé.

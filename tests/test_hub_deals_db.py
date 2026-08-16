@@ -3,6 +3,8 @@ import sys
 import os
 import unittest
 
+import requests
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import hub_deals_db
@@ -144,9 +146,16 @@ class TestNotificationMentionneLaVille(unittest.TestCase):
         self.messages_logges = []
         hub_deals_db.log = self.messages_logges.append
 
+        # verifier_et_notifier_anomalies mesure desormais le rabattement
+        # reel avant d'envoyer : sans ce remplacement, ce test ferait un
+        # VRAI appel a l'API Travelpayouts, avec sa pause de 0,4 s.
+        self._mesurer_original = hub_deals_db.mesurer_rabattements
+        hub_deals_db.mesurer_rabattements = lambda couples, **kw: {}
+
     def tearDown(self):
         hub_deals_db.envoyer_telegram = self._envoyer_telegram_original
         hub_deals_db.log = self._log_original
+        hub_deals_db.mesurer_rabattements = self._mesurer_original
         self.conn.close()
 
     def test_le_message_mentionne_la_ville_de_depart(self):
@@ -336,6 +345,264 @@ class TestDestinationsActives(unittest.TestCase):
             "SELECT DISTINCT destination_nom FROM offres")]
         conn.close()
         self.assertEqual(noms, ["Dakar"])
+
+
+class TestMesurerRabattements(unittest.TestCase):
+    """La fonction de prix est injectee : aucun appel reseau ici."""
+
+    def setUp(self):
+        # mesurer_rabattements journalise les segments non mesures : sans
+        # ce remplacement, les tests ecrivent dans le vrai
+        # flight_deals_log.txt et polluent l'historique d'exploitation.
+        self._log_original = hub_deals_db.log
+        self.messages_logges = []
+        hub_deals_db.log = self.messages_logges.append
+
+    def tearDown(self):
+        hub_deals_db.log = self._log_original
+
+    def _prix(self, table):
+        """Fabrique une fausse get_prix_route a partir d'un dict
+        {(origine, destination): prix}."""
+        def get_prix(origine, destination):
+            valeur = table.get((origine, destination))
+            if valeur is None:
+                return {}
+            return {"price": valeur, "departure_at": "2026-09-05T10:00:00+00:00"}
+        return get_prix
+
+    def test_renvoie_le_prix_api_quand_il_existe(self):
+        mesures = hub_deals_db.mesurer_rabattements(
+            [("Dakar", "Casablanca")],
+            get_prix=self._prix({("DKR", "CMN"): 468}), pause=False)
+
+        self.assertEqual(mesures[("Dakar", "Casablanca")]["prix"], 468)
+        self.assertEqual(mesures[("Dakar", "Casablanca")]["table"], 400)
+        self.assertTrue(mesures[("Dakar", "Casablanca")]["mesure"])
+
+    def test_replie_sur_la_table_quand_l_api_ne_repond_rien(self):
+        """Cas le plus frequent : 17 des 40 segments n'ont aucun prix,
+        dont CDG pour les cinq villes."""
+        mesures = hub_deals_db.mesurer_rabattements(
+            [("Dakar", "Paris")], get_prix=self._prix({}), pause=False)
+
+        self.assertEqual(mesures[("Dakar", "Paris")]["prix"], 300)
+        self.assertEqual(mesures[("Dakar", "Paris")]["table"], 300)
+        self.assertFalse(mesures[("Dakar", "Paris")]["mesure"])
+
+    def test_replie_sur_la_table_en_cas_d_erreur_reseau(self):
+        def get_prix(origine, destination):
+            raise requests.exceptions.RequestException("coupure")
+
+        mesures = hub_deals_db.mesurer_rabattements(
+            [("Dakar", "Casablanca")], get_prix=get_prix, pause=False)
+
+        self.assertEqual(mesures[("Dakar", "Casablanca")]["prix"], 400)
+        self.assertFalse(mesures[("Dakar", "Casablanca")]["mesure"])
+
+    def test_dedoublonne_les_couples(self):
+        """Plusieurs anomalies partagent souvent le meme (ville, hub) :
+        un seul appel doit etre fait."""
+        appels = []
+
+        def get_prix(origine, destination):
+            appels.append((origine, destination))
+            return {"price": 468, "departure_at": ""}
+
+        hub_deals_db.mesurer_rabattements(
+            [("Dakar", "Casablanca"), ("Dakar", "Casablanca"),
+             ("Dakar", "Casablanca")], get_prix=get_prix, pause=False)
+
+        self.assertEqual(len(appels), 1)
+
+    def test_ignore_un_nom_de_hub_inconnu_sans_lever(self):
+        """Un nom absent de HUBS ne doit pas faire echouer une notification."""
+        mesures = hub_deals_db.mesurer_rabattements(
+            [("Dakar", "Atlantide")], get_prix=self._prix({}), pause=False)
+
+        self.assertEqual(mesures, {})
+
+    def test_ignore_un_couple_sans_rabattement_en_table(self):
+        """Abidjan n'a pas d'entree pour le hub ADD."""
+        mesures = hub_deals_db.mesurer_rabattements(
+            [("Abidjan", "Addis-Abeba")], get_prix=self._prix({}), pause=False)
+
+        self.assertEqual(mesures, {})
+
+    def test_les_noms_de_hubs_sont_uniques(self):
+        """L'inversion nom -> IATA perdrait silencieusement un hub si deux
+        hubs portaient le meme nom."""
+        noms = [info["nom"] for info in hub_deals_db.HUBS.values()]
+        self.assertEqual(len(noms), len(set(noms)))
+
+
+class TestCorrigerAnomalies(unittest.TestCase):
+    def _anomalie(self, ville="Dakar", hub="Abidjan", prix=810.0,
+                  moyenne=900.0, baisse=10.0):
+        return {
+            "destination": "Nairobi", "destination_code": "NBO",
+            "hub": hub, "ville_depart": ville,
+            "prix_actuel": prix, "moyenne_historique": moyenne,
+            "ecart_type": 50.0, "z_score": 1.8, "baisse_pct": baisse,
+            "methode": "z-score", "nb_releves_historique": 6,
+            "date_depart": "2026-09-05T10:00:00+00:00", "lien": "/search/x",
+        }
+
+    def test_decale_le_prix_du_jour_et_la_moyenne(self):
+        """Le rabattement est une constante additive de tout l'historique :
+        on decale les deux du meme montant."""
+        mesures = {("Dakar", "Abidjan"): {"prix": 409, "table": 200,
+                                          "mesure": True}}
+
+        [a] = hub_deals_db.corriger_anomalies([self._anomalie()], mesures)
+
+        self.assertEqual(a["prix_actuel"], 1019)        # 810 + 209
+        self.assertEqual(a["moyenne_historique"], 1109)  # 900 + 209
+        self.assertEqual(a["rabattement_mesure"], 409)
+
+    def test_preserve_l_ecart_absolu(self):
+        """Le decalage ne doit pas creer ni detruire d'ecart : c'est ce qui
+        garantit que le z-score reste valable."""
+        mesures = {("Dakar", "Abidjan"): {"prix": 409, "table": 200,
+                                          "mesure": True}}
+
+        [a] = hub_deals_db.corriger_anomalies([self._anomalie()], mesures)
+
+        self.assertEqual(a["moyenne_historique"] - a["prix_actuel"], 90)
+
+    def test_recalcule_le_pourcentage_sur_l_echelle_decalee(self):
+        mesures = {("Dakar", "Abidjan"): {"prix": 409, "table": 200,
+                                          "mesure": True}}
+
+        [a] = hub_deals_db.corriger_anomalies([self._anomalie()], mesures)
+
+        self.assertEqual(a["baisse_pct"], 8.1)   # 90 / 1109
+
+    def test_ne_decale_pas_une_anomalie_non_mesuree(self):
+        mesures = {("Dakar", "Paris"): {"prix": 300, "table": 300,
+                                        "mesure": False}}
+
+        [a] = hub_deals_db.corriger_anomalies(
+            [self._anomalie(hub="Paris")], mesures)
+
+        self.assertEqual(a["prix_actuel"], 810)
+        self.assertEqual(a["moyenne_historique"], 900)
+        self.assertEqual(a["baisse_pct"], 10.0)
+        self.assertIsNone(a["rabattement_mesure"])
+
+    def test_ne_decale_pas_une_anomalie_sans_mesure_du_tout(self):
+        [a] = hub_deals_db.corriger_anomalies([self._anomalie()], {})
+
+        self.assertEqual(a["prix_actuel"], 810)
+        self.assertIsNone(a["rabattement_mesure"])
+
+    def test_retrie_apres_correction(self):
+        """Le decalage reduit le pourcentage : sans re-tri, l'ordre affiche
+        ne correspondrait plus aux pourcentages affiches.
+
+        Le cas est choisi pour que l'ordre s'INVERSE reellement -- un jeu
+        de donnees ou l'ordre resterait le meme passerait ce test meme si
+        le tri etait absent, et ne prouverait donc rien."""
+        anomalies = [
+            self._anomalie(hub="Abidjan", prix=810, moyenne=900, baisse=10.0),
+            self._anomalie(hub="Paris", prix=920, moyenne=1000, baisse=8.0),
+        ]
+        mesures = {
+            # +300 de decalage : 90/1200 = 7,5 %, sous les 8 % de Paris
+            ("Dakar", "Abidjan"): {"prix": 500, "table": 200, "mesure": True},
+            ("Dakar", "Paris"): {"prix": 300, "table": 300, "mesure": False},
+        }
+
+        corrigees = hub_deals_db.corriger_anomalies(anomalies, mesures)
+
+        self.assertEqual([a["hub"] for a in corrigees], ["Paris", "Abidjan"])
+        self.assertEqual(corrigees[0]["baisse_pct"], 8.0)
+        self.assertEqual(corrigees[1]["baisse_pct"], 7.5)
+
+    def test_ne_modifie_pas_les_anomalies_d_origine(self):
+        """La fonction rend de nouveaux dictionnaires : muter l'entree
+        rendrait le diagnostic incoherent avec ce que la base contient."""
+        origine = self._anomalie()
+        mesures = {("Dakar", "Abidjan"): {"prix": 409, "table": 200,
+                                          "mesure": True}}
+
+        hub_deals_db.corriger_anomalies([origine], mesures)
+
+        self.assertEqual(origine["prix_actuel"], 810)
+        self.assertNotIn("rabattement_mesure", origine)
+
+
+class TestNotificationAvecRabattementMesure(unittest.TestCase):
+    """envoyer_telegram est remplace par un espion : aucun envoi reel."""
+
+    def setUp(self):
+        self.envois = []
+        self._envoyer = hub_deals_db.envoyer_telegram
+        self._mesurer = hub_deals_db.mesurer_rabattements
+        hub_deals_db.envoyer_telegram = lambda msg: self.envois.append(msg)
+
+        # sans ce remplacement, ces tests ecrivent « Notification Telegram
+        # envoyee » dans le vrai flight_deals_log.txt, ou la ligne devient
+        # un faux temoignage d'exploitation.
+        self._log_original = hub_deals_db.log
+        self.messages_logges = []
+        hub_deals_db.log = self.messages_logges.append
+
+        self.conn = sqlite3.connect(":memory:")
+        hub_deals_db.init_db(self.conn)
+        # une route jugee anormalement basse au dernier releve
+        for date, total in (("2026-08-10 10:00:00", 900),
+                            ("2026-08-11 10:00:00", 900),
+                            ("2026-08-12 10:00:00", 900),
+                            ("2026-08-13 10:00:00", 810)):
+            self.conn.execute("""
+                INSERT INTO offres (date_collecte, ville_depart, hub_origine,
+                    destination_code, destination_nom, prix_vol_hub,
+                    rabattement, total_estime, date_depart, lien)
+                VALUES (?, 'Dakar', 'Abidjan', 'NBO', 'Nairobi', 0, 200, ?, '', '/x')
+            """, (date, total))
+        self.conn.commit()
+
+    def tearDown(self):
+        hub_deals_db.envoyer_telegram = self._envoyer
+        hub_deals_db.mesurer_rabattements = self._mesurer
+        hub_deals_db.log = self._log_original
+        self.conn.close()
+
+    def test_le_message_affiche_le_rabattement_mesure(self):
+        hub_deals_db.mesurer_rabattements = lambda couples, **kw: {
+            ("Dakar", "Abidjan"): {"prix": 409, "table": 200, "mesure": True}}
+
+        hub_deals_db.verifier_et_notifier_anomalies(
+            self.conn, "2026-08-13 10:00:00")
+
+        self.assertEqual(len(self.envois), 1)
+        self.assertIn("Rabattement mesure ce jour", self.envois[0])
+        self.assertIn("409", self.envois[0])
+        self.assertIn("1019", self.envois[0])   # 810 + 209
+
+    def test_le_message_signale_un_rabattement_non_mesure(self):
+        hub_deals_db.mesurer_rabattements = lambda couples, **kw: {
+            ("Dakar", "Abidjan"): {"prix": 200, "table": 200, "mesure": False}}
+
+        hub_deals_db.verifier_et_notifier_anomalies(
+            self.conn, "2026-08-13 10:00:00")
+
+        self.assertIn("non mesure", self.envois[0])
+        self.assertIn("810", self.envois[0])   # non decale
+
+    def test_une_erreur_de_mesure_n_empeche_pas_la_notification(self):
+        """Une alerte avec des totaux non corriges vaut infiniment mieux
+        qu'une alerte perdue."""
+        def exploser(couples, **kw):
+            raise RuntimeError("panne inattendue")
+        hub_deals_db.mesurer_rabattements = exploser
+
+        hub_deals_db.verifier_et_notifier_anomalies(
+            self.conn, "2026-08-13 10:00:00")
+
+        self.assertEqual(len(self.envois), 1)
+        self.assertIn("810", self.envois[0])
 
 
 if __name__ == "__main__":
