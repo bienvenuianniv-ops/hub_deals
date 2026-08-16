@@ -2,7 +2,7 @@
 
 > **Pour les agents :** SOUS-COMPÉTENCE REQUISE — utiliser `superpowers:subagent-driven-development`
 > (recommandé) ou `superpowers:executing-plans` pour exécuter ce plan tâche par tâche. Les étapes
-> utilisent des cases à cocher (`- [ ]`) pour le suivi.
+> utilisent des cases à cocher (`- [x]`) pour le suivi.
 
 **Objectif :** permettre à l'utilisateur d'interroger lui-même une route (une de ses 5 villes → une
 destination quelconque) et de placer une destination sous surveillance du relevé quotidien.
@@ -54,7 +54,7 @@ réseau — la brique la plus simple à tester.
   - `valider_ville(argument: str) -> str` — renvoie le nom canonique de la ville, lève `ValueError`
   - `resoudre_destination(argument: str) -> str` — renvoie un code IATA, lève `ValueError`
 
-- [ ] **Étape 1 : Écrire les tests qui échouent**
+- [x] **Étape 1 : Écrire les tests qui échouent**
 
 ```python
 import os
@@ -99,12 +99,12 @@ if __name__ == "__main__":
     unittest.main()
 ```
 
-- [ ] **Étape 2 : Lancer les tests pour vérifier qu'ils échouent**
+- [x] **Étape 2 : Lancer les tests pour vérifier qu'ils échouent**
 
 Commande : `python -m unittest tests.test_recherche -v`
 Attendu : `ModuleNotFoundError: No module named 'recherche'`
 
-- [ ] **Étape 3 : Écrire l'implémentation minimale**
+- [x] **Étape 3 : Écrire l'implémentation minimale**
 
 Créer `recherche.py` :
 
@@ -163,17 +163,17 @@ def resoudre_destination(argument: str) -> str:
         f"(3 lettres, par exemple BKK pour Bangkok).")
 ```
 
-- [ ] **Étape 4 : Lancer les tests pour vérifier qu'ils passent**
+- [x] **Étape 4 : Lancer les tests pour vérifier qu'ils passent**
 
 Commande : `python -m unittest tests.test_recherche -v`
 Attendu : 7 tests PASS
 
-- [ ] **Étape 5 : Vérifier que la suite complète reste verte**
+- [x] **Étape 5 : Vérifier que la suite complète reste verte**
 
 Commande : `python -m unittest discover -s tests`
 Attendu : OK (37 tests existants + 7 nouveaux = 44)
 
-- [ ] **Étape 6 : Commit**
+- [x] **Étape 6 : Commit**
 
 ```bash
 git add recherche.py tests/test_recherche.py
@@ -201,7 +201,7 @@ options sans prix, trie.
     `prix_principal` (float), `total` (float), `estime` (bool), `date_depart` (str), `lien` (str).
     `erreurs` est une liste de messages lisibles.
 
-- [ ] **Étape 1 : Écrire les tests qui échouent**
+- [x] **Étape 1 : Écrire les tests qui échouent**
 
 Ajouter à `tests/test_recherche.py` :
 
@@ -334,12 +334,12 @@ class TestChercherItineraires(unittest.TestCase):
         self.assertIn("TST", erreurs[0])
 ```
 
-- [ ] **Étape 2 : Lancer les tests pour vérifier qu'ils échouent**
+- [x] **Étape 2 : Lancer les tests pour vérifier qu'ils échouent**
 
 Commande : `python -m unittest tests.test_recherche -v`
 Attendu : `AttributeError: module 'recherche' has no attribute 'chercher_itineraires'`
 
-- [ ] **Étape 3 : Écrire l'implémentation minimale**
+- [x] **Étape 3 : Écrire l'implémentation minimale**
 
 Ajouter à `recherche.py` (après `resoudre_destination`) :
 
@@ -439,17 +439,17 @@ def chercher_itineraires(ville, dest, get_prix=None, pause=True):
     return options, erreurs
 ```
 
-- [ ] **Étape 4 : Lancer les tests pour vérifier qu'ils passent**
+- [x] **Étape 4 : Lancer les tests pour vérifier qu'ils passent**
 
 Commande : `python -m unittest tests.test_recherche -v`
 Attendu : 15 tests PASS
 
-- [ ] **Étape 5 : Vérifier que la suite complète reste verte**
+- [x] **Étape 5 : Vérifier que la suite complète reste verte**
 
 Commande : `python -m unittest discover -s tests`
 Attendu : OK
 
-- [ ] **Étape 6 : Commit**
+- [x] **Étape 6 : Commit**
 
 ```bash
 git add recherche.py tests/test_recherche.py
@@ -473,7 +473,7 @@ Lire la base en lecture seule pour situer le prix, et produire la sortie texte.
     inconnue de la base ; sinon `{"nb_releves": int, "minimum": float, "date_minimum": str}`
   - `formater(ville: str, dest: str, options: list, erreurs: list, contexte: dict | None) -> str`
 
-- [ ] **Étape 1 : Écrire les tests qui échouent**
+- [x] **Étape 1 : Écrire les tests qui échouent**
 
 Ajouter à `tests/test_recherche.py` :
 
@@ -582,12 +582,12 @@ class TestFormatage(unittest.TestCase):
         self.assertIn("erreur reseau", sortie)
 ```
 
-- [ ] **Étape 2 : Lancer les tests pour vérifier qu'ils échouent**
+- [x] **Étape 2 : Lancer les tests pour vérifier qu'ils échouent**
 
 Commande : `python -m unittest tests.test_recherche -v`
 Attendu : `AttributeError: module 'recherche' has no attribute 'contexte_historique'`
 
-- [ ] **Étape 3 : Écrire l'implémentation minimale**
+- [x] **Étape 3 : Écrire l'implémentation minimale**
 
 Ajouter à `recherche.py` :
 
@@ -675,17 +675,17 @@ def formater(ville, dest, options, erreurs, contexte):
     return "\n".join(lignes)
 ```
 
-- [ ] **Étape 4 : Lancer les tests pour vérifier qu'ils passent**
+- [x] **Étape 4 : Lancer les tests pour vérifier qu'ils passent**
 
 Commande : `python -m unittest tests.test_recherche -v`
 Attendu : 25 tests PASS
 
-- [ ] **Étape 5 : Vérifier que la suite complète reste verte**
+- [x] **Étape 5 : Vérifier que la suite complète reste verte**
 
 Commande : `python -m unittest discover -s tests`
 Attendu : OK
 
-- [ ] **Étape 6 : Commit**
+- [x] **Étape 6 : Commit**
 
 ```bash
 git add recherche.py tests/test_recherche.py
@@ -715,7 +715,7 @@ Cet ordre évite un import circulaire.
   - `ajouter_destination(code: str, chemin=None) -> None` — lève `ValueError` au-delà du plafond
   - `retirer_destination(code: str, chemin=None) -> bool`
 
-- [ ] **Étape 1 : Écrire les tests qui échouent**
+- [x] **Étape 1 : Écrire les tests qui échouent**
 
 Ajouter à `tests/test_recherche.py` :
 
@@ -792,12 +792,12 @@ class TestDestinationsPersonnelles(unittest.TestCase):
         self.assertEqual(len(actives), len(recherche.collecteur.DESTINATIONS) + 1)
 ```
 
-- [ ] **Étape 2 : Lancer les tests pour vérifier qu'ils échouent**
+- [x] **Étape 2 : Lancer les tests pour vérifier qu'ils échouent**
 
 Commande : `python -m unittest tests.test_recherche -v`
 Attendu : `AttributeError: module 'hub_deals_db' has no attribute 'charger_destinations_perso'`
 
-- [ ] **Étape 3 : Écrire l'implémentation minimale**
+- [x] **Étape 3 : Écrire l'implémentation minimale**
 
 Ajouter à `hub_deals_db.py`, juste après la définition de `EQUIVALENCES` :
 
@@ -867,12 +867,12 @@ def retirer_destination(code, chemin=None):
     return True
 ```
 
-- [ ] **Étape 4 : Lancer les tests pour vérifier qu'ils passent**
+- [x] **Étape 4 : Lancer les tests pour vérifier qu'ils passent**
 
 Commande : `python -m unittest tests.test_recherche -v`
 Attendu : 34 tests PASS
 
-- [ ] **Étape 5 : Ajouter le fichier au `.gitignore`**
+- [x] **Étape 5 : Ajouter le fichier au `.gitignore`**
 
 Ajouter après la ligne `flight_deals_log.txt` :
 
@@ -883,12 +883,12 @@ destinations_perso.json
 
 Vérifier : `git check-ignore destinations_perso.json` doit renvoyer le nom du fichier.
 
-- [ ] **Étape 6 : Vérifier que la suite complète reste verte**
+- [x] **Étape 6 : Vérifier que la suite complète reste verte**
 
 Commande : `python -m unittest discover -s tests`
 Attendu : OK
 
-- [ ] **Étape 7 : Commit**
+- [x] **Étape 7 : Commit**
 
 ```bash
 git add hub_deals_db.py recherche.py tests/test_recherche.py .gitignore
@@ -909,7 +909,7 @@ Le relevé quotidien doit balayer les destinations personnelles en plus des 32 i
 - Consomme : `destinations_actives()` (tâche 4)
 - Produit : aucune nouvelle interface publique
 
-- [ ] **Étape 1 : Écrire le test qui échoue**
+- [x] **Étape 1 : Écrire le test qui échoue**
 
 Ajouter à `tests/test_hub_deals_db.py`, dans la classe `TestRabattement` ou une nouvelle classe :
 
@@ -961,12 +961,12 @@ class TestDestinationsActives(unittest.TestCase):
         self.assertEqual(noms, ["Dakar"])
 ```
 
-- [ ] **Étape 2 : Lancer les tests pour vérifier qu'ils échouent**
+- [x] **Étape 2 : Lancer les tests pour vérifier qu'ils échouent**
 
 Commande : `python -m unittest tests.test_hub_deals_db -v`
 Attendu : le second test échoue — `'destinations_actives' not found in bloc_principal`
 
-- [ ] **Étape 3 : Écrire l'implémentation minimale**
+- [x] **Étape 3 : Écrire l'implémentation minimale**
 
 Dans `hub_deals_db.py`, bloc `if __name__ == "__main__"`, remplacer :
 
@@ -1019,12 +1019,12 @@ Et dans le bloc principal, passer le nom déjà chargé :
             )
 ```
 
-- [ ] **Étape 4 : Lancer les tests pour vérifier qu'ils passent**
+- [x] **Étape 4 : Lancer les tests pour vérifier qu'ils passent**
 
 Commande : `python -m unittest discover -s tests`
 Attendu : OK — 37 tests d'origine + 34 des tâches 1 à 4 + 4 ici = **75 tests**
 
-- [ ] **Étape 5 : Commit**
+- [x] **Étape 5 : Commit**
 
 ```bash
 git add hub_deals_db.py tests/test_hub_deals_db.py
@@ -1046,7 +1046,7 @@ Le point d'entrée, plus la documentation. Rien de nouveau côté logique.
 - Consomme : toutes les fonctions des tâches 1 à 4
 - Produit : `main(argv: list[str]) -> int` — code de sortie 0 si succès, 1 si erreur d'usage
 
-- [ ] **Étape 1 : Écrire les tests qui échouent**
+- [x] **Étape 1 : Écrire les tests qui échouent**
 
 Ajouter à `tests/test_recherche.py` :
 
@@ -1091,12 +1091,12 @@ class TestInterfaceLigneDeCommande(unittest.TestCase):
         self.assertIn("appels", sortie)   # le cout est rappele
 ```
 
-- [ ] **Étape 2 : Lancer les tests pour vérifier qu'ils échouent**
+- [x] **Étape 2 : Lancer les tests pour vérifier qu'ils échouent**
 
 Commande : `python -m unittest tests.test_recherche -v`
 Attendu : `AttributeError: module 'recherche' has no attribute 'main'`
 
-- [ ] **Étape 3 : Écrire l'implémentation minimale**
+- [x] **Étape 3 : Écrire l'implémentation minimale**
 
 Ajouter à la fin de `recherche.py` :
 
@@ -1188,12 +1188,12 @@ if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))
 ```
 
-- [ ] **Étape 4 : Lancer les tests pour vérifier qu'ils passent**
+- [x] **Étape 4 : Lancer les tests pour vérifier qu'ils passent**
 
 Commande : `python -m unittest tests.test_recherche -v`
 Attendu : 37 tests PASS
 
-- [ ] **Étape 5 : Documenter dans `README.md`**
+- [x] **Étape 5 : Documenter dans `README.md`**
 
 Ajouter une section après la description du relevé automatique :
 
@@ -1225,7 +1225,7 @@ Les destinations surveillées sont stockées dans `destinations_perso.json` (loc
 15 au maximum. Une recherche n'écrit jamais dans la base.
 ```
 
-- [ ] **Étape 6 : Documenter dans `CHANGELOG.md`**
+- [x] **Étape 6 : Documenter dans `CHANGELOG.md`**
 
 Ajouter en tête, sous une entrée `## 2026-08-15`, section `### Ajouté` :
 
@@ -1242,12 +1242,12 @@ Ajouter en tête, sous une entrée `## 2026-08-15`, section `### Ajouté` :
   bénéficie alors de la détection d'anomalie et des notifications Telegram existantes.
 ```
 
-- [ ] **Étape 7 : Vérifier que la suite complète reste verte**
+- [x] **Étape 7 : Vérifier que la suite complète reste verte**
 
 Commande : `python -m unittest discover -s tests`
 Attendu : OK
 
-- [ ] **Étape 8 : Commit**
+- [x] **Étape 8 : Commit**
 
 ```bash
 git add recherche.py README.md CHANGELOG.md tests/test_recherche.py
@@ -1260,22 +1260,22 @@ git commit -m "feat(recherche): interface en ligne de commande et documentation"
 
 À faire manuellement, avec le vrai token et la vraie base — conformément à l'usage du projet.
 
-- [ ] `python recherche.py Dakar BZV` — le vol direct (~932 €) apparaît et bat le « 1001 € via
+- [x] `python recherche.py Dakar BZV` — le vol direct (~932 €) apparaît et bat le « 1001 € via
       Paris » du relevé. Ouvrir le lien Aviasales proposé et vérifier qu'il pointe la bonne route.
-- [ ] `python recherche.py Dakar ZZZ` — message honnête « aucun itinéraire trouve », pas de trace
+- [x] `python recherche.py Dakar ZZZ` — message honnête « aucun itinéraire trouve », pas de trace
       d'erreur Python.
-- [ ] `python recherche.py Marseille BKK` — refus avec la liste des 5 villes.
-- [ ] `python recherche.py Dakar DKR` — refus (destination = ville de départ).
-- [ ] Relever `SELECT COUNT(*) FROM offres` **avant et après** plusieurs recherches : le nombre doit
+- [x] `python recherche.py Marseille BKK` — refus avec la liste des 5 villes.
+- [x] `python recherche.py Dakar DKR` — refus (destination = ville de départ).
+- [x] Relever `SELECT COUNT(*) FROM offres` **avant et après** plusieurs recherches : le nombre doit
       être identique (aucune écriture en base).
-- [ ] `python recherche.py --surveiller BKK`, puis `python hub_deals_db.py` (vrai relevé) : vérifier
+- [x] `python recherche.py --surveiller BKK`, puis `python hub_deals_db.py` (vrai relevé) : vérifier
       dans le log la ligne « 1 destination(s) personnelle(s) active(s) (+9 appels) », puis en base
       que `BKK` produit des lignes pour les 5 villes de départ.
-- [ ] `python recherche.py --oublier BKK` puis `--liste` : retour à l'état antérieur.
-- [ ] Confirmer que la tâche planifiée « Traqueur de vols » tourne toujours (prochain déclenchement
+- [x] `python recherche.py --oublier BKK` puis `--liste` : retour à l'état antérieur.
+- [x] Confirmer que la tâche planifiée « Traqueur de vols » tourne toujours (prochain déclenchement
       quotidien à 13h00, `LastTaskResult = 0`).
 
 ## Après la vérification
 
 - [ ] Fusionner dans `master` en `--no-ff` (usage du projet), pousser sur `origin`.
-- [ ] Mettre à jour `hub_deals_AUDIT.md` avec les mesures relevées.
+- [x] Mettre à jour `hub_deals_AUDIT.md` avec les mesures relevées.
