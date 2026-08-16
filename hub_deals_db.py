@@ -508,12 +508,31 @@ def verifier_et_notifier_anomalies(conn: sqlite3.Connection, date_collecte: str)
         log("Aucune anomalie a notifier pour ce releve.")
         return
 
+    # cout reel du trajet vers le hub, mesure maintenant : la table
+    # RABATTEMENT vieillit (jusqu'a +171 % d'ecart mesure le 2026-08-16)
+    couples = [(a["ville_depart"], a["hub"]) for a in anomalies]
+    try:
+        mesures = mesurer_rabattements(couples)
+    except Exception as e:
+        # une alerte aux totaux non corriges vaut mieux qu'une alerte perdue
+        log(f"   -> mesure des rabattements impossible : {e}")
+        mesures = {}
+    anomalies = corriger_anomalies(anomalies, mesures)
+
+    nb_mesures = sum(1 for a in anomalies if a["rabattement_mesure"] is not None)
+    log(f"Rabattement mesure pour {nb_mesures}/{len(anomalies)} anomalie(s).")
+
     lignes = [f"<b>{len(anomalies)} bonne(s) affaire(s) detectee(s) !</b>\n"]
     for a in anomalies:
+        if a["rabattement_mesure"] is not None:
+            note = f"Rabattement mesure ce jour : {a['rabattement_mesure']:.0f}\u20ac"
+        else:
+            note = "Rabattement estime, non mesure ce jour"
         lignes.append(
             f"\n<b>{a['destination']}</b> (depuis {a['hub']}, au depart de {a['ville_depart']})\n"
             f"{a['prix_actuel']:.0f}\u20ac (moyenne habituelle : {a['moyenne_historique']:.0f}\u20ac, "
             f"-{a['baisse_pct']:.0f}%)\n"
+            f"{note}\n"
             f"https://www.aviasales.com{a['lien']}"
         )
     message = "\n".join(lignes)

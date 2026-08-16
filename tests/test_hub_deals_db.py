@@ -146,9 +146,16 @@ class TestNotificationMentionneLaVille(unittest.TestCase):
         self.messages_logges = []
         hub_deals_db.log = self.messages_logges.append
 
+        # verifier_et_notifier_anomalies mesure desormais le rabattement
+        # reel avant d'envoyer : sans ce remplacement, ce test ferait un
+        # VRAI appel a l'API Travelpayouts, avec sa pause de 0,4 s.
+        self._mesurer_original = hub_deals_db.mesurer_rabattements
+        hub_deals_db.mesurer_rabattements = lambda couples, **kw: {}
+
     def tearDown(self):
         hub_deals_db.envoyer_telegram = self._envoyer_telegram_original
         hub_deals_db.log = self._log_original
+        hub_deals_db.mesurer_rabattements = self._mesurer_original
         self.conn.close()
 
     def test_le_message_mentionne_la_ville_de_depart(self):
@@ -512,6 +519,71 @@ class TestCorrigerAnomalies(unittest.TestCase):
 
         self.assertEqual(origine["prix_actuel"], 810)
         self.assertNotIn("rabattement_mesure", origine)
+
+
+class TestNotificationAvecRabattementMesure(unittest.TestCase):
+    """envoyer_telegram est remplace par un espion : aucun envoi reel."""
+
+    def setUp(self):
+        self.envois = []
+        self._envoyer = hub_deals_db.envoyer_telegram
+        self._mesurer = hub_deals_db.mesurer_rabattements
+        hub_deals_db.envoyer_telegram = lambda msg: self.envois.append(msg)
+
+        self.conn = sqlite3.connect(":memory:")
+        hub_deals_db.init_db(self.conn)
+        # une route jugee anormalement basse au dernier releve
+        for date, total in (("2026-08-10 10:00:00", 900),
+                            ("2026-08-11 10:00:00", 900),
+                            ("2026-08-12 10:00:00", 900),
+                            ("2026-08-13 10:00:00", 810)):
+            self.conn.execute("""
+                INSERT INTO offres (date_collecte, ville_depart, hub_origine,
+                    destination_code, destination_nom, prix_vol_hub,
+                    rabattement, total_estime, date_depart, lien)
+                VALUES (?, 'Dakar', 'Abidjan', 'NBO', 'Nairobi', 0, 200, ?, '', '/x')
+            """, (date, total))
+        self.conn.commit()
+
+    def tearDown(self):
+        hub_deals_db.envoyer_telegram = self._envoyer
+        hub_deals_db.mesurer_rabattements = self._mesurer
+        self.conn.close()
+
+    def test_le_message_affiche_le_rabattement_mesure(self):
+        hub_deals_db.mesurer_rabattements = lambda couples, **kw: {
+            ("Dakar", "Abidjan"): {"prix": 409, "table": 200, "mesure": True}}
+
+        hub_deals_db.verifier_et_notifier_anomalies(
+            self.conn, "2026-08-13 10:00:00")
+
+        self.assertEqual(len(self.envois), 1)
+        self.assertIn("Rabattement mesure ce jour", self.envois[0])
+        self.assertIn("409", self.envois[0])
+        self.assertIn("1019", self.envois[0])   # 810 + 209
+
+    def test_le_message_signale_un_rabattement_non_mesure(self):
+        hub_deals_db.mesurer_rabattements = lambda couples, **kw: {
+            ("Dakar", "Abidjan"): {"prix": 200, "table": 200, "mesure": False}}
+
+        hub_deals_db.verifier_et_notifier_anomalies(
+            self.conn, "2026-08-13 10:00:00")
+
+        self.assertIn("non mesure", self.envois[0])
+        self.assertIn("810", self.envois[0])   # non decale
+
+    def test_une_erreur_de_mesure_n_empeche_pas_la_notification(self):
+        """Une alerte avec des totaux non corriges vaut infiniment mieux
+        qu'une alerte perdue."""
+        def exploser(couples, **kw):
+            raise RuntimeError("panne inattendue")
+        hub_deals_db.mesurer_rabattements = exploser
+
+        hub_deals_db.verifier_et_notifier_anomalies(
+            self.conn, "2026-08-13 10:00:00")
+
+        self.assertEqual(len(self.envois), 1)
+        self.assertIn("810", self.envois[0])
 
 
 if __name__ == "__main__":

@@ -4,6 +4,20 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Pro
 
 ## 2026-08-16
 
+### Corrigé
+- **Les alertes Telegram annonçaient des totaux faux.** `total_estime` additionne le prix du vol
+  hub → destination et une valeur de `RABATTEMENT` écrite en dur. Mesure des 40 segments le
+  2026-08-16 : le problème n'est pas un sous-dimensionnement uniforme mais du **vieillissement** —
+  Kinshasa et Lomé, relevés la veille par API, collent à +0 %, tandis que Brazzaville → Lagos
+  dérive de **+171 %**, Abidjan → Nairobi de +136 % et Dakar → Abidjan de +104 %. Trois segments
+  sont au contraire **sur**-estimés. Le coût réel du trajet ville → hub est désormais mesuré au
+  moment de l'alerte et appliqué au prix du jour **et** à la moyenne historique : le rabattement
+  étant une constante additive de tout l'historique d'une route, ce décalage préserve l'écart
+  absolu et le z-score, et seul le pourcentage change. Chaque ligne indique si le rabattement a
+  été mesuré ou vient de la table — 17 des 40 segments n'ont aucun prix API, dont `CDG` pour les
+  cinq villes. Correction d'affichage uniquement : la base et la détection sont inchangées, donc
+  l'historique reste comparable. 80 → 97 tests.
+
 ### Ajouté
 - **Recherche de billet à la demande** (`recherche.py`) : interroger soi-même une route depuis
   l'une des 5 villes vers n'importe quel code IATA, au lieu de subir les propositions du relevé.
