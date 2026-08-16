@@ -5,6 +5,18 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Pro
 ## 2026-08-16
 
 ### Ajouté
+- **Une sauvegarde qui échoue notifie désormais sur Telegram.** Jusqu'ici l'échec n'allait que dans
+  le journal : le relevé s'enregistrait, l'alerte de prix partait normalement, tout paraissait sain
+  — et les données avaient cessé d'être protégées sans le moindre signe. C'est le même angle mort
+  que le `NextRunTime` vide de la tâche planifiée en juillet : **le silence est ambigu**. Seul
+  l'échec est notifié ; un message quotidien « sauvegarde OK » deviendrait un bruit qu'on cesse de
+  lire en une semaine, et son absence passerait alors inaperçue. Le message est délibérément
+  distinct des alertes de prix, pour qu'une panne technique ne se confonde pas avec une bonne
+  affaire. 114 → 118 tests.
+
+## 2026-08-16
+
+### Ajouté
 - **Sauvegarde hors machine** (`sauvegarde.py`). La base et ses copies vivaient toutes sur le même
   disque : une panne matérielle effaçait 21 relevés que l'API ne peut pas reconstituer. Un dump SQL
   texte est désormais poussé sur la branche `sauvegardes` du dépôt privé à la fin de chaque relevé,
