@@ -153,20 +153,35 @@ PAUSE_ENTRE_APPELS = 0.4
 # du vol hub->destination est interroge une seule fois puis reutilise pour
 # chaque ville de depart.
 # Provenance de chaque valeur, marquee en fin de ligne :
-#   [M]  mesure a l'API le 2026-08-16 (23 segments sur 40)
-#   [NM] aucun prix API a cette date -- valeur conservee, potentiellement
-#        vieillie ; son age est celui indique en tete de bloc
+#   [M]  mesure le 2026-08-16 via v1/prices/cheap (23 segments)
+#   [M3] mesure le 2026-08-16 via v3/prices_for_dates (5 segments, tous
+#        CDG) -- v1 ne renvoie rien pour ces routes, mais v3 si
+#   [NM] aucun prix sur AUCUN des trois endpoints (12 segments) : valeur
+#        conservee, potentiellement vieillie ; son age est indique en
+#        tete de bloc
 #
-# Les 17 [NM] ne sont pas des oublis : l'endpoint ne renvoie rien pour ces
-# routes. Aucune valeur n'est inventee pour les combler. Noter que CDG est
-# [NM] pour les CINQ villes alors que Paris sort en tete de la plupart des
-# meilleurs totaux -- c'est la limite principale de cette table.
+# Les 12 [NM] ne sont pas des oublis. Aucune valeur n'est inventee pour
+# les combler.
+#
+# ATTENTION -- PIEGE ALLER SIMPLE / ALLER-RETOUR. v1/prices/cheap renvoie
+# des ALLER-RETOUR. v2/prices/latest et v3/prices_for_dates acceptent un
+# parametre one_way qui, laisse a "true", renvoie des allers simples
+# environ 43 % moins chers. Toute mesure faite avec ces endpoints DOIT
+# passer one_way=false, sinon la table melange deux natures de prix et
+# sous-estime massivement. Controle de non-regression fait le 2026-08-16
+# sur DKR->CMN, couvert par les trois : v1=468, v2=467, v3=468 en
+# aller-retour -- les endpoints concordent, les valeurs sont comparables.
+#
+# Les 5 [M3] etaient auparavant les valeurs les plus fausses de la table
+# alors que Paris sort en tete de 20 des 20 meilleurs prix d'un releve :
+# le classement etait donc structurellement biaise en faveur de Paris,
+# par artefact de cette table et non par realite du marche.
 RABATTEMENT = {
     # mesure 2026-08-16 ; les [NM] datent d'une estimation manuelle de
     # juillet 2026 et sont donc les plus suspectes de la table
     "Dakar": {
         "CMN": {"prix": 468, "duree_h": 4},   # [M] etait 400
-        "CDG": {"prix": 300, "duree_h": 6},   # [NM]
+        "CDG": {"prix": 496, "duree_h": 6},   # [M3] etait 300 (+65 %)
         "IST": {"prix": 525, "duree_h": 7},   # [M] etait 400
         "ADD": {"prix": 500, "duree_h": 6},   # [NM]
         "NBO": {"prix": 500, "duree_h": 8},   # [NM]
@@ -178,7 +193,7 @@ RABATTEMENT = {
     # mesure 2026-08-16 ; les [NM] datent du releve API du 2026-08-03
     "Abidjan": {
         "CMN": {"prix": 574, "duree_h": 3},   # [M] etait 563
-        "CDG": {"prix": 511, "duree_h": 8},   # [NM]
+        "CDG": {"prix": 486, "duree_h": 8},   # [M3] etait 511 -- SUR-estime
         "IST": {"prix": 672, "duree_h": 9},   # [M] etait 700 -- SUR-estime
         "NBO": {"prix": 883, "duree_h": 8},   # [M] etait 374
         "JNB": {"prix": 350, "duree_h": 9},   # [NM]
@@ -188,7 +203,7 @@ RABATTEMENT = {
     # mesure 2026-08-16 ; les [NM] etaient des estimations manuelles
     "Brazzaville": {
         "CMN": {"prix": 700, "duree_h": 6},   # [NM]
-        "CDG": {"prix": 600, "duree_h": 7},   # [NM]
+        "CDG": {"prix": 1306, "duree_h": 7},  # [M3] etait 600 (+118 %)
         "IST": {"prix": 800, "duree_h": 9},   # [NM]
         "ADD": {"prix": 700, "duree_h": 5},   # [NM]
         "NBO": {"prix": 970, "duree_h": 6},   # [M] etait 750 (estimation)
@@ -200,7 +215,7 @@ RABATTEMENT = {
     # donc encore frais
     "Lome": {
         "CMN": {"prix": 1289, "duree_h": 4},  # [M] inchange
-        "CDG": {"prix": 279, "duree_h": 12},  # [NM]
+        "CDG": {"prix": 862, "duree_h": 12},  # [M3] etait 279 (+209 %)
         "IST": {"prix": 718, "duree_h": 11},  # [NM]
         "NBO": {"prix": 848, "duree_h": 9},   # [M] etait 849 ; duree estimee
         "ABJ": {"prix": 434, "duree_h": 2},   # [M] etait 441
@@ -213,7 +228,7 @@ RABATTEMENT = {
     # table est le VIEILLISSEMENT, pas un biais systematique.
     "Kinshasa": {
         "CMN": {"prix": 738, "duree_h": 7},   # [M] inchange
-        "CDG": {"prix": 377, "duree_h": 11},  # [NM]
+        "CDG": {"prix": 708, "duree_h": 11},  # [M3] etait 377 (+88 %)
         "IST": {"prix": 651, "duree_h": 12},  # [M] etait 650
         "ADD": {"prix": 682, "duree_h": 21},  # [M] inchange
         "NBO": {"prix": 555, "duree_h": 13},  # [M] inchange

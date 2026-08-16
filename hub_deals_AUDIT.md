@@ -493,3 +493,77 @@ Deux tests écrits le matin même codaient en dur `400`, la valeur de `Dakar/CMN
 dès la mise à jour de la table. Ils vérifiaient « la table vaut 400 » au lieu de « le repli utilise
 la valeur de la table ». Ils lisent désormais `RABATTEMENT` — **une valeur de données ne doit pas
 être recopiée dans un test**, sinon toute mise à jour légitime des données casse la suite.
+
+## ✅ Rabattements vers Paris récupérés via `v3/prices_for_dates` (2026-08-16)
+
+Spike de faisabilité sur les 17 segments `[NM]`, puis intégration des 5 récupérables.
+
+### Résultat de la sonde
+
+`v2/prices/latest` et `v3/prices_for_dates` ont été interrogés sur les 17 segments que
+`v1/prices/cheap` ne couvre pas. **5 sont récupérables — et ce sont exactement les 5 `CDG`**,
+c'est-à-dire ceux que la table signalait comme sa limite principale. Les 12 autres ne répondent
+sur aucun des trois endpoints : ce sont de vrais trous.
+
+| Segment | Table | Mesuré (v3) | Écart |
+|---|---|---|---|
+| Lomé → Paris | 279 € | **862 €** | **+209 %** |
+| Brazzaville → Paris | 600 € | **1 306 €** | **+118 %** |
+| Kinshasa → Paris | 377 € | **708 €** | **+88 %** |
+| Dakar → Paris | 300 € | **496 €** | **+65 %** |
+| Abidjan → Paris | 511 € | 486 € | −5 % |
+
+### Le biais structurel que cela révèle
+
+Avant correction, **les 20 meilleurs prix d'un relevé passaient tous par Paris**, et les cinq
+meilleurs totaux — un par ville — étaient tous « via Paris → Londres ». Ce n'était pas une
+réalité du marché : Paris portait simplement le rabattement le plus bas de la table, par
+artefact. Le classement était donc structurellement faussé en faveur d'un hub.
+
+Après correction :
+
+| | Avant | Après |
+|---|---|---|
+| Paris dans le top 20 | 20 / 20 | **6 / 20** |
+| Le Caire | 0 | **11 / 20** |
+| Meilleur au départ de Dakar | Paris → Londres 356 € | Le Caire → Milan 483 € |
+| Meilleur au départ de Lomé | Paris → Londres 335 € | Abidjan → Accra 649 € |
+
+Abidjan reste sur Paris (542 €), ce qui est cohérent : c'est la seule ville dont le rabattement
+vers Paris était *sur*-estimé.
+
+### ⚠️ Piège aller simple / aller-retour — deux fois sauvé par le contrôle positif
+
+La première sonde a « récupéré » **15 segments sur 17**. Résultat faux : `v2` et `v3` prennent un
+paramètre `one_way` qui, laissé à `true`, renvoie des allers simples environ **43 % moins chers**
+que les aller-retour de `v1/prices/cheap`. Intégrées, ces valeurs auraient injecté un biais
+massif à la baisse, précisément sur les segments les plus utilisés.
+
+Ce qui l'a révélé : un **contrôle positif** sur `DKR→CMN`, segment couvert par les trois
+endpoints. En `one_way=true`, v1 donnait 468 € et v2/v3 267 € — incohérence visible. En
+`one_way=false` : v1=468, v2=467, v3=468. Les endpoints concordent et les valeurs sont
+comparables.
+
+Le même contrôle avait déjà servi juste avant : une sonde initiale avait renvoyé **0/17**, ce qui
+ressemblait à un constat d'absence de données. C'était en réalité **401 Unauthorized** — le
+processus utilisait l'ancien token, l'environnement d'une session étant figé à son démarrage
+tandis que la nouvelle valeur n'existait que dans le registre. Un `except Exception: valeur = None`
+avait converti 34 erreurs d'authentification en autant de faux « pas de données ».
+
+**Double leçon :**
+1. **Toute sonde d'API doit embarquer un contrôle positif** — un cas dont on connaît la réponse.
+   Sans lui, « pas de données » et « ma requête est fausse » sont indiscernables, et les deux
+   erreurs ci-dessus seraient passées pour des résultats.
+2. **Ne jamais avaler une exception dans une sonde exploratoire.** C'est le contraire du code de
+   production, où l'absorption protège le relevé : ici, l'erreur *est* l'information.
+
+### Vérification
+
+| Contrôle | Résultat |
+|---|---|
+| Lignes recalculées | 1 783 — exactement les lignes `Paris` |
+| Lignes en base | 10 081 → **10 081** |
+| `total_estime = prix_vol_hub + rabattement` | 0 violation |
+| Rabattement en base ≠ table | 0 ligne |
+| Détection | 3 anomalies, 124 routes sous leur moyenne — pas de gel |
+| Suite de tests | 97 OK |
