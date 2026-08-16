@@ -5,6 +5,28 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Pro
 ## 2026-08-16
 
 ### Modifié
+- **Les 5 rabattements vers Paris étaient les valeurs les plus fausses de la table, sur le hub le
+  plus utilisé.** `v1/prices/cheap` ne renvoie rien pour `ville → CDG`, mais `v3/prices_for_dates`
+  si. Mesure du 2026-08-16 : Lomé → Paris **279 € → 862 € (+209 %)**, Brazzaville → Paris
+  600 € → 1 306 € (+118 %), Kinshasa → Paris 377 € → 708 € (+88 %), Dakar → Paris 300 € → 496 €
+  (+65 %) ; Abidjan → Paris était au contraire sur-estimé (511 € → 486 €). Conséquence mesurée
+  avant correction : **les 20 meilleurs prix d'un relevé passaient tous par Paris**, non par
+  réalité du marché mais parce que Paris portait le rabattement le plus bas de la table. Après
+  correction, Paris ne représente plus que 6 des 20 meilleurs prix et Le Caire en prend 11 ; le
+  meilleur trajet au départ de Lomé passe de « Paris → Londres 335 € » à « Abidjan → Accra
+  649 € ». 1 783 lignes recalculées rétroactivement, selon la même procédure que la mise à jour
+  précédente.
+- **Piège aller simple / aller-retour documenté dans le code.** `v2/prices/latest` et
+  `v3/prices_for_dates` prennent un paramètre `one_way` qui, laissé à `true`, renvoie des prix
+  environ 43 % plus bas que les aller-retour de `v1/prices/cheap`. Une première sonde a ainsi
+  « récupéré » 15 segments avec des valeurs incomparables ; seul un contrôle sur un segment couvert
+  par les trois endpoints (`DKR→CMN` : v1=468, v2=467, v3=468 en aller-retour) l'a révélé.
+- 12 segments restent sans prix sur aucun des trois endpoints et gardent leur ancienne valeur,
+  marquée `[NM]` dans la table.
+
+## 2026-08-16
+
+### Modifié
 - **`RABATTEMENT` remis à jour et historique recalculé rétroactivement.** Les 23 segments pour
   lesquels l'API renvoie un prix ont été réécrits d'après une mesure du 2026-08-16 ; 15 valeurs
   changent, dont Brazzaville → Lagos (400 € → **1 083 €**), Abidjan → Nairobi (374 € → 883 €) et
