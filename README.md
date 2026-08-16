@@ -111,6 +111,32 @@ python recherche.py --oublier BKK
 Les destinations surveillées sont stockées dans `destinations_perso.json` (local, non versionné),
 15 au maximum. Une recherche n'écrit jamais dans la base.
 
+## Sauvegardes
+
+Deux mécanismes, pour **deux risques différents** :
+
+| | Protège de | Où |
+|---|---|---|
+| Copie locale | erreur logique, migration ratée | même disque, 5 copies gardées |
+| Dump distant | perte de la machine, disque mort | branche `sauvegardes` du dépôt privé |
+
+La copie locale ne protège **pas** d'une panne matérielle : elle vit sur le même disque. Le dump
+distant est le seul qui survit à la perte du portable. Il est poussé automatiquement à la fin de
+chaque relevé, et une panne de git ou de réseau n'interrompt jamais la collecte.
+
+Le dump est un fichier SQL texte : git l'encode en deltas efficaces, et il se restaure sans
+dépendre du format binaire de SQLite.
+
+```bash
+python sauvegarde.py --sauver                       # copie locale + dump distant
+git show sauvegardes:flight_deals.sql > dump.sql    # récupérer le dump
+python sauvegarde.py --restaurer dump.sql neuve.db  # restaurer
+```
+
+La restauration est **outillée et non documentée** : `sqlite3` n'existe pas en ligne de commande
+sur toutes les machines — notamment pas sur celle-ci — et une procédure qu'on découvre
+inexécutable le jour de la panne ne vaut rien. `--restaurer` refuse d'écraser un fichier existant.
+
 ## Tests
 
 ```

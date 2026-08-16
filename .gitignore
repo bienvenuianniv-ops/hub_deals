@@ -19,3 +19,6 @@ destinations_perso.json
 
 # Worktrees Claude Code (isolation de session, pas du code source)
 .claude/
+
+# worktree de la branche de sauvegarde (pas du code source)
+.sauvegardes/

@@ -318,6 +318,15 @@ class TestDestinationsActives(unittest.TestCase):
         self.assertIn("destinations_actives", bloc_principal)
         self.assertNotIn("for dest_iata in DESTINATIONS", bloc_principal)
 
+    def test_le_bloc_principal_sauvegarde_hors_machine(self):
+        """Garde-fou de non-regression : si l'appel disparait, la base
+        cesse silencieusement d'etre sauvegardee ailleurs que sur ce
+        disque -- et on ne s'en apercevrait qu'apres l'avoir perdue."""
+        import inspect
+        source = inspect.getsource(hub_deals_db)
+        bloc = source.split('if __name__ == "__main__":')[1]
+        self.assertIn("sauvegarder_distant", bloc)
+
     def test_le_nom_d_une_destination_personnelle_arrive_en_base(self):
         """Sans cela, une destination personnelle serait enregistree avec son
         code IATA en guise de nom (BKK au lieu de Bangkok)."""
