@@ -3,6 +3,8 @@ import sys
 import os
 import unittest
 
+import requests
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import hub_deals_db
@@ -336,6 +338,84 @@ class TestDestinationsActives(unittest.TestCase):
             "SELECT DISTINCT destination_nom FROM offres")]
         conn.close()
         self.assertEqual(noms, ["Dakar"])
+
+
+class TestMesurerRabattements(unittest.TestCase):
+    """La fonction de prix est injectee : aucun appel reseau ici."""
+
+    def _prix(self, table):
+        """Fabrique une fausse get_prix_route a partir d'un dict
+        {(origine, destination): prix}."""
+        def get_prix(origine, destination):
+            valeur = table.get((origine, destination))
+            if valeur is None:
+                return {}
+            return {"price": valeur, "departure_at": "2026-09-05T10:00:00+00:00"}
+        return get_prix
+
+    def test_renvoie_le_prix_api_quand_il_existe(self):
+        mesures = hub_deals_db.mesurer_rabattements(
+            [("Dakar", "Casablanca")],
+            get_prix=self._prix({("DKR", "CMN"): 468}), pause=False)
+
+        self.assertEqual(mesures[("Dakar", "Casablanca")]["prix"], 468)
+        self.assertEqual(mesures[("Dakar", "Casablanca")]["table"], 400)
+        self.assertTrue(mesures[("Dakar", "Casablanca")]["mesure"])
+
+    def test_replie_sur_la_table_quand_l_api_ne_repond_rien(self):
+        """Cas le plus frequent : 17 des 40 segments n'ont aucun prix,
+        dont CDG pour les cinq villes."""
+        mesures = hub_deals_db.mesurer_rabattements(
+            [("Dakar", "Paris")], get_prix=self._prix({}), pause=False)
+
+        self.assertEqual(mesures[("Dakar", "Paris")]["prix"], 300)
+        self.assertEqual(mesures[("Dakar", "Paris")]["table"], 300)
+        self.assertFalse(mesures[("Dakar", "Paris")]["mesure"])
+
+    def test_replie_sur_la_table_en_cas_d_erreur_reseau(self):
+        def get_prix(origine, destination):
+            raise requests.exceptions.RequestException("coupure")
+
+        mesures = hub_deals_db.mesurer_rabattements(
+            [("Dakar", "Casablanca")], get_prix=get_prix, pause=False)
+
+        self.assertEqual(mesures[("Dakar", "Casablanca")]["prix"], 400)
+        self.assertFalse(mesures[("Dakar", "Casablanca")]["mesure"])
+
+    def test_dedoublonne_les_couples(self):
+        """Plusieurs anomalies partagent souvent le meme (ville, hub) :
+        un seul appel doit etre fait."""
+        appels = []
+
+        def get_prix(origine, destination):
+            appels.append((origine, destination))
+            return {"price": 468, "departure_at": ""}
+
+        hub_deals_db.mesurer_rabattements(
+            [("Dakar", "Casablanca"), ("Dakar", "Casablanca"),
+             ("Dakar", "Casablanca")], get_prix=get_prix, pause=False)
+
+        self.assertEqual(len(appels), 1)
+
+    def test_ignore_un_nom_de_hub_inconnu_sans_lever(self):
+        """Un nom absent de HUBS ne doit pas faire echouer une notification."""
+        mesures = hub_deals_db.mesurer_rabattements(
+            [("Dakar", "Atlantide")], get_prix=self._prix({}), pause=False)
+
+        self.assertEqual(mesures, {})
+
+    def test_ignore_un_couple_sans_rabattement_en_table(self):
+        """Abidjan n'a pas d'entree pour le hub ADD."""
+        mesures = hub_deals_db.mesurer_rabattements(
+            [("Abidjan", "Addis-Abeba")], get_prix=self._prix({}), pause=False)
+
+        self.assertEqual(mesures, {})
+
+    def test_les_noms_de_hubs_sont_uniques(self):
+        """L'inversion nom -> IATA perdrait silencieusement un hub si deux
+        hubs portaient le meme nom."""
+        noms = [info["nom"] for info in hub_deals_db.HUBS.values()]
+        self.assertEqual(len(noms), len(set(noms)))
 
 
 if __name__ == "__main__":

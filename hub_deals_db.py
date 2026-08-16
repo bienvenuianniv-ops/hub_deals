@@ -340,6 +340,68 @@ def classement_du_jour(conn: sqlite3.Connection, date_collecte: str) -> list:
     return [dict(zip(colonnes, ligne)) for ligne in cur.fetchall()]
 
 
+def mesurer_rabattements(couples, get_prix=None, pause: bool = True) -> dict:
+    """
+    Interroge l'API pour le cout reel de chaque trajet ville -> hub.
+
+    La table RABATTEMENT vieillit : mesure du 2026-08-16, 23 des 40
+    segments ont un prix API, avec des ecarts allant de -4 % a +171 %
+    selon l'anciennete de la valeur. On mesure donc au moment de
+    l'alerte, sans jamais toucher a ce qui est enregistre en base.
+
+    `couples` porte le NOM du hub (« Paris »), comme la colonne
+    hub_origine des anomalies -- pas le code IATA.
+
+    Renvoie {(ville, hub_nom): {"prix", "table", "mesure"}}. `table` est
+    rendue avec la mesure pour que le calcul du decalage reste une
+    fonction pure de son entree.
+    """
+    if get_prix is None:
+        get_prix = get_prix_route
+
+    iata_par_nom = {info["nom"]: iata for iata, info in HUBS.items()}
+    mesures = {}
+
+    # dict.fromkeys dedoublonne en preservant l'ordre : plusieurs
+    # anomalies partagent souvent le meme couple, un seul appel suffit
+    for ville, hub_nom in dict.fromkeys(couples):
+        hub_iata = iata_par_nom.get(hub_nom)
+        if hub_iata is None:
+            continue  # nom inconnu : on ignore plutot que de lever
+
+        cout = RABATTEMENT.get(ville, {}).get(hub_iata)
+        if cout is None:
+            continue  # pas de rabattement connu pour ce couple
+
+        repli = {"prix": cout["prix"], "table": cout["prix"], "mesure": False}
+        origine = VILLE_IATA.get(ville)
+        if origine is None:
+            mesures[(ville, hub_nom)] = repli
+            continue
+
+        try:
+            offre = get_prix(origine, hub_iata)
+        except requests.exceptions.RequestException as e:
+            # log() masque les secrets : l'URL de l'exception porte le token
+            log(f"   -> rabattement {origine}->{hub_iata} non mesure : {e}")
+            mesures[(ville, hub_nom)] = repli
+            continue
+
+        if pause:
+            time.sleep(PAUSE_ENTRE_APPELS)
+
+        if offre and offre.get("price"):
+            mesures[(ville, hub_nom)] = {
+                "prix": offre["price"],
+                "table": cout["prix"],
+                "mesure": True,
+            }
+        else:
+            mesures[(ville, hub_nom)] = repli
+
+    return mesures
+
+
 def masquer_secrets(message: str) -> str:
     """
     Remplace les secrets par *** dans un message destine au log.
