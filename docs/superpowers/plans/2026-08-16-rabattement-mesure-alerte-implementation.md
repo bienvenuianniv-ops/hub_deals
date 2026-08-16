@@ -2,7 +2,7 @@
 
 > **Pour les agents :** SOUS-COMPÉTENCE REQUISE — utiliser `superpowers:subagent-driven-development`
 > (recommandé) ou `superpowers:executing-plans` pour exécuter ce plan tâche par tâche. Les étapes
-> utilisent des cases à cocher (`- [ ]`) pour le suivi.
+> utilisent des cases à cocher (`- [x]`) pour le suivi.
 
 **Objectif :** afficher dans les alertes Telegram un total fondé sur le rabattement réellement
 mesuré au moment de l'envoi, au lieu de la valeur figée de `RABATTEMENT`.
@@ -55,7 +55,7 @@ seule couche qui fait du réseau.
     `couples` est un itérable de `(ville, hub_nom)` où `hub_nom` est le **nom** du hub
     (« Paris »), tel que porté par `hub_origine` dans les anomalies — pas le code IATA.
 
-- [ ] **Étape 1 : Écrire les tests qui échouent**
+- [x] **Étape 1 : Écrire les tests qui échouent**
 
 Ajouter à `tests/test_hub_deals_db.py` :
 
@@ -140,12 +140,12 @@ class TestMesurerRabattements(unittest.TestCase):
 
 Ajouter `import requests` en tête de `tests/test_hub_deals_db.py` s'il n'y est pas déjà.
 
-- [ ] **Étape 2 : Lancer les tests pour vérifier qu'ils échouent**
+- [x] **Étape 2 : Lancer les tests pour vérifier qu'ils échouent**
 
 Commande : `python -m unittest tests.test_hub_deals_db -k TestMesurerRabattements`
 Attendu : `AttributeError: module 'hub_deals_db' has no attribute 'mesurer_rabattements'`
 
-- [ ] **Étape 3 : Écrire l'implémentation minimale**
+- [x] **Étape 3 : Écrire l'implémentation minimale**
 
 Ajouter à `hub_deals_db.py`, après `classement_du_jour()` :
 
@@ -212,17 +212,17 @@ def mesurer_rabattements(couples, get_prix=None, pause: bool = True) -> dict:
     return mesures
 ```
 
-- [ ] **Étape 4 : Lancer les tests pour vérifier qu'ils passent**
+- [x] **Étape 4 : Lancer les tests pour vérifier qu'ils passent**
 
 Commande : `python -m unittest tests.test_hub_deals_db -k TestMesurerRabattements -v`
 Attendu : 7 tests PASS
 
-- [ ] **Étape 5 : Vérifier que la suite complète reste verte**
+- [x] **Étape 5 : Vérifier que la suite complète reste verte**
 
 Commande : `python -m unittest discover -s tests`
 Attendu : OK — 80 + 7 = **87 tests**
 
-- [ ] **Étape 6 : Commit**
+- [x] **Étape 6 : Commit**
 
 ```bash
 git add hub_deals_db.py tests/test_hub_deals_db.py
@@ -249,7 +249,7 @@ réseau, aucune base.
     sinon) ; `prix_actuel`, `moyenne_historique` et `baisse_pct` sont décalés quand la mesure
     existe. Liste re-triée par `baisse_pct` décroissante.
 
-- [ ] **Étape 1 : Écrire les tests qui échouent**
+- [x] **Étape 1 : Écrire les tests qui échouent**
 
 Ajouter à `tests/test_hub_deals_db.py` :
 
@@ -350,12 +350,12 @@ class TestCorrigerAnomalies(unittest.TestCase):
         self.assertNotIn("rabattement_mesure", origine)
 ```
 
-- [ ] **Étape 2 : Lancer les tests pour vérifier qu'ils échouent**
+- [x] **Étape 2 : Lancer les tests pour vérifier qu'ils échouent**
 
 Commande : `python -m unittest tests.test_hub_deals_db -k TestCorrigerAnomalies`
 Attendu : `AttributeError: module 'hub_deals_db' has no attribute 'corriger_anomalies'`
 
-- [ ] **Étape 3 : Écrire l'implémentation minimale**
+- [x] **Étape 3 : Écrire l'implémentation minimale**
 
 Ajouter à `hub_deals_db.py`, juste après `mesurer_rabattements()` :
 
@@ -402,17 +402,17 @@ def corriger_anomalies(anomalies: list, mesures: dict) -> list:
     return corrigees
 ```
 
-- [ ] **Étape 4 : Lancer les tests pour vérifier qu'ils passent**
+- [x] **Étape 4 : Lancer les tests pour vérifier qu'ils passent**
 
 Commande : `python -m unittest tests.test_hub_deals_db -k TestCorrigerAnomalies -v`
 Attendu : 7 tests PASS
 
-- [ ] **Étape 5 : Vérifier que la suite complète reste verte**
+- [x] **Étape 5 : Vérifier que la suite complète reste verte**
 
 Commande : `python -m unittest discover -s tests`
 Attendu : OK — 87 + 7 = **94 tests**
 
-- [ ] **Étape 6 : Commit**
+- [x] **Étape 6 : Commit**
 
 ```bash
 git add hub_deals_db.py tests/test_hub_deals_db.py
@@ -434,7 +434,7 @@ Enchaîne les deux couches et compose le message. Rien de nouveau côté logique
 - Consomme : `mesurer_rabattements()` (tâche 1), `corriger_anomalies()` (tâche 2)
 - Produit : aucune nouvelle interface publique
 
-- [ ] **Étape 1 : Écrire les tests qui échouent**
+- [x] **Étape 1 : Écrire les tests qui échouent**
 
 Ajouter à `tests/test_hub_deals_db.py` :
 
@@ -504,12 +504,12 @@ class TestNotificationAvecRabattementMesure(unittest.TestCase):
         self.assertIn("810", self.envois[0])
 ```
 
-- [ ] **Étape 2 : Lancer les tests pour vérifier qu'ils échouent**
+- [x] **Étape 2 : Lancer les tests pour vérifier qu'ils échouent**
 
 Commande : `python -m unittest tests.test_hub_deals_db -k TestNotificationAvecRabattementMesure`
 Attendu : échec sur `Rabattement mesure ce jour` absent du message
 
-- [ ] **Étape 3 : Écrire l'implémentation minimale**
+- [x] **Étape 3 : Écrire l'implémentation minimale**
 
 Dans `hub_deals_db.py`, remplacer le corps de `verifier_et_notifier_anomalies()` situé après le
 `if not anomalies:` par :
@@ -547,17 +547,17 @@ Dans `hub_deals_db.py`, remplacer le corps de `verifier_et_notifier_anomalies()`
     log(f"Notification Telegram envoyee pour {len(anomalies)} anomalie(s).")
 ```
 
-- [ ] **Étape 4 : Lancer les tests pour vérifier qu'ils passent**
+- [x] **Étape 4 : Lancer les tests pour vérifier qu'ils passent**
 
 Commande : `python -m unittest tests.test_hub_deals_db -k TestNotificationAvecRabattementMesure -v`
 Attendu : 3 tests PASS
 
-- [ ] **Étape 5 : Vérifier que la suite complète reste verte**
+- [x] **Étape 5 : Vérifier que la suite complète reste verte**
 
 Commande : `python -m unittest discover -s tests`
 Attendu : OK — 94 + 3 = **97 tests**
 
-- [ ] **Étape 6 : Documenter dans `README.md`**
+- [x] **Étape 6 : Documenter dans `README.md`**
 
 Dans la section « Détection d'anomalie », ajouter après la description du seuil :
 
@@ -577,7 +577,7 @@ Cette correction est **d'affichage uniquement** : rien n'est réécrit en base, 
 travaille toujours sur les mêmes valeurs qu'avant.
 ```
 
-- [ ] **Étape 7 : Documenter dans `CHANGELOG.md`**
+- [x] **Étape 7 : Documenter dans `CHANGELOG.md`**
 
 Ajouter en tête, sous une entrée `## 2026-08-16` existante ou nouvelle, section `### Corrigé` :
 
@@ -596,7 +596,7 @@ Ajouter en tête, sous une entrée `## 2026-08-16` existante ou nouvelle, sectio
   l'historique reste comparable. 80 → 97 tests.
 ```
 
-- [ ] **Étape 8 : Commit**
+- [x] **Étape 8 : Commit**
 
 ```bash
 git add hub_deals_db.py tests/test_hub_deals_db.py README.md CHANGELOG.md
@@ -609,21 +609,21 @@ git commit -m "feat(alerte): affiche le rabattement mesure dans les notification
 
 À faire manuellement, avec le vrai token et la vraie base — conformément à l'usage du projet.
 
-- [ ] Relever `SELECT COUNT(*) FROM offres` **avant** le relevé.
-- [ ] Lancer `python hub_deals_db.py` (vrai relevé, vraie notification Telegram).
-- [ ] Vérifier dans le journal la ligne `Rabattement mesure pour N/M anomalie(s).`
-- [ ] Sur le message Telegram reçu : vérifier qu'au moins une ligne porte
+- [x] Relever `SELECT COUNT(*) FROM offres` **avant** le relevé.
+- [x] Lancer `python hub_deals_db.py` (vrai relevé, vraie notification Telegram).
+- [x] Vérifier dans le journal la ligne `Rabattement mesure pour N/M anomalie(s).`
+- [x] Sur le message Telegram reçu : vérifier qu'au moins une ligne porte
       `Rabattement mesure ce jour` et au moins une autre `Rabattement estime, non mesure ce jour`
       — les segments `CDG` garantissent le second cas.
-- [ ] Vérifier que les pourcentages affichés décroissent bien de haut en bas (preuve du re-tri).
-- [ ] Pour une ligne mesurée, recalculer à la main : `total affiché − total en base` doit égaler
+- [x] Vérifier que les pourcentages affichés décroissent bien de haut en bas (preuve du re-tri).
+- [x] Pour une ligne mesurée, recalculer à la main : `total affiché − total en base` doit égaler
       `rabattement mesuré − rabattement de la table`.
-- [ ] Vérifier que les `total_estime` stockés sont **identiques** à ce qu'ils auraient été sans
+- [x] Vérifier que les `total_estime` stockés sont **identiques** à ce qu'ils auraient été sans
       ce changement (comparer une ligne du relevé à `prix_vol_hub + rabattement` de la table).
-- [ ] `grep` le journal pour le token : aucune occurrence en clair.
-- [ ] Confirmer que la tâche planifiée « Traqueur de vols » tourne toujours (`LastTaskResult = 0`).
+- [x] `grep` le journal pour le token : aucune occurrence en clair.
+- [x] Confirmer que la tâche planifiée « Traqueur de vols » tourne toujours (`LastTaskResult = 0`).
 
 ## Après la vérification
 
 - [ ] Fusionner dans `master` en `--no-ff` (usage du projet), pousser sur `origin`.
-- [ ] Mettre à jour `hub_deals_AUDIT.md` avec les mesures relevées.
+- [x] Mettre à jour `hub_deals_AUDIT.md` avec les mesures relevées.
