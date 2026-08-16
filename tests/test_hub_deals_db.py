@@ -615,5 +615,78 @@ class TestNotificationAvecRabattementMesure(unittest.TestCase):
         self.assertIn("810", self.envois[0])
 
 
+class _FausseReponse:
+    def __init__(self, status_code=200, text="{\"ok\":true}"):
+        self.status_code = status_code
+        self.text = text
+
+
+class TestJournalisationDuMessageTelegram(unittest.TestCase):
+    """Le message envoye doit etre tracable apres coup : un bot ne peut pas
+    relire ses propres messages sortants via l'API Telegram."""
+
+    def setUp(self):
+        self._log = hub_deals_db.log
+        self.lignes = []
+        hub_deals_db.log = self.lignes.append
+        self._post = hub_deals_db.requests.post
+        self._bot = hub_deals_db.TELEGRAM_BOT_TOKEN
+        self._chat = hub_deals_db.TELEGRAM_CHAT_ID
+        hub_deals_db.TELEGRAM_BOT_TOKEN = "bot-factice"
+        hub_deals_db.TELEGRAM_CHAT_ID = "12345"
+
+    def tearDown(self):
+        hub_deals_db.log = self._log
+        hub_deals_db.requests.post = self._post
+        hub_deals_db.TELEGRAM_BOT_TOKEN = self._bot
+        hub_deals_db.TELEGRAM_CHAT_ID = self._chat
+
+    def _journal(self):
+        return "\n".join(self.lignes)
+
+    def test_journalise_le_message_envoye(self):
+        hub_deals_db.requests.post = lambda *a, **k: _FausseReponse()
+
+        hub_deals_db.envoyer_telegram("<b>Nairobi</b>\n894 EUR")
+
+        journal = self._journal()
+        self.assertIn("message Telegram", journal)
+        self.assertIn("894 EUR", journal)
+        self.assertIn("Nairobi", journal)
+
+    def test_journalise_meme_si_telegram_n_est_pas_configure(self):
+        """Ce cas est aujourd'hui totalement silencieux : on ne sait pas ce
+        qui AURAIT ete notifie."""
+        hub_deals_db.TELEGRAM_BOT_TOKEN = None
+        hub_deals_db.requests.post = lambda *a, **k: _FausseReponse()
+
+        hub_deals_db.envoyer_telegram("contenu qui n'est pas parti")
+
+        journal = self._journal()
+        self.assertIn("contenu qui n'est pas parti", journal)
+        self.assertIn("non configure", journal)
+
+    def test_signale_un_refus_de_telegram(self):
+        """Sans verification du code HTTP, un message refuse etait compte
+        comme envoye -- le journal devenait un faux temoignage."""
+        hub_deals_db.requests.post = lambda *a, **k: _FausseReponse(
+            400, '{"ok":false,"description":"can\'t parse entities"}')
+
+        hub_deals_db.envoyer_telegram("<b>mal ferme")
+
+        journal = self._journal()
+        self.assertIn("400", journal)
+        self.assertIn("ECHEC", journal)
+
+    def test_signale_une_erreur_reseau_sans_lever(self):
+        def poster(*a, **k):
+            raise requests.exceptions.RequestException("coupure")
+        hub_deals_db.requests.post = poster
+
+        hub_deals_db.envoyer_telegram("peu importe")
+
+        self.assertIn("ERREUR envoi Telegram", self._journal())
+
+
 if __name__ == "__main__":
     unittest.main()
