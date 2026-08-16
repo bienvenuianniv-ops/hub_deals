@@ -674,6 +674,16 @@ if __name__ == "__main__":
 
     total_lignes = conn.execute("SELECT COUNT(*) FROM offres").fetchone()[0]
     log(f"Total cumule dans la base : {total_lignes} lignes")
+
+    # Sauvegarde hors machine. Placee en DERNIER et absorbant toute
+    # erreur : a ce stade le releve est deja enregistre, une panne de
+    # git ou de reseau ne doit pas le faire echouer.
+    try:
+        from sauvegarde import sauvegarder_distant
+        sauvegarder_distant(conn, ".sauvegardes", journaliser=log)
+    except Exception as e:
+        log(f"   -> sauvegarde distante impossible : {e}")
+
     log("=== Fin d'execution ===")
 
     conn.close()

@@ -5,6 +5,23 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Pro
 ## 2026-08-16
 
 ### Ajouté
+- **Sauvegarde hors machine** (`sauvegarde.py`). La base et ses copies vivaient toutes sur le même
+  disque : une panne matérielle effaçait 21 relevés que l'API ne peut pas reconstituer. Un dump SQL
+  texte est désormais poussé sur la branche `sauvegardes` du dépôt privé à la fin de chaque relevé,
+  via un worktree git dédié — `master` reste exempt de commits automatiques, et git encode les
+  deltas efficacement puisque la base est cumulative. Toute erreur est absorbée : une panne de git
+  ou de réseau n'interrompt jamais une collecte.
+- **Restauration outillée** (`--restaurer`), et non simplement documentée : `sqlite3` n'existe pas
+  en ligne de commande sur la machine de l'utilisateur, donc la commande de README habituelle y
+  serait inexécutable — précisément le jour où l'on en aurait besoin. La commande refuse d'écraser
+  un fichier existant. Vérifiée de bout en bout : dump récupéré depuis la branche git puis restauré,
+  10 996 lignes et somme des totaux identiques à la base en service.
+- **Purge des copies locales** : elles s'accumulaient sans limite. Les 5 plus récentes sont
+  conservées, et la purge ne touche aucun autre fichier. 101 → 114 tests.
+
+## 2026-08-16
+
+### Ajouté
 - **Le message Telegram envoyé est désormais journalisé**, encadré par des marqueurs
   `--- message Telegram envoye ---` / `--- fin du message ---`. Un bot ne peut pas relire ses
   propres messages sortants — l'API Telegram n'expose que ce qu'il *reçoit* (`getUpdates`) — donc
