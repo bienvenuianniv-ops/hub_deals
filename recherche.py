@@ -18,6 +18,8 @@ recherches de l'utilisateur fausseraient ses propres alertes.
 """
 
 import json
+import sqlite3
+import sys
 import time
 
 import requests
@@ -257,3 +259,92 @@ def retirer_destination(code, chemin=None):
     with open(chemin, "w", encoding="utf-8") as f:
         json.dump(perso, f, ensure_ascii=False, indent=2, sort_keys=True)
     return True
+
+
+USAGE = """Usage :
+  python recherche.py <ville> <destination>   cherche un itineraire
+  python recherche.py --surveiller <dest>     ajoute au releve quotidien
+  python recherche.py --oublier <dest>        retire du releve quotidien
+  python recherche.py --liste                 destinations surveillees
+
+Villes disponibles : {villes}
+La destination est un code IATA (BKK) ou le nom d'une destination connue."""
+
+
+def main(argv):
+    villes = ", ".join(sorted(collecteur.RABATTEMENT))
+
+    if not argv:
+        print(USAGE.format(villes=villes))
+        return 1
+
+    try:
+        if argv[0] == "--liste":
+            # chemin passe explicitement : un argument par defaut est fige a
+            # la definition de la fonction, donc lire l'attribut du module
+            # ici est le seul moyen d'en tenir compte s'il a ete change.
+            perso = collecteur.charger_destinations_perso(
+                collecteur.CHEMIN_DESTINATIONS_PERSO)
+            if not perso:
+                print("Aucune destination personnelle sous surveillance.")
+            else:
+                cout = len(perso) * len(collecteur.HUBS)
+                print(f"{len(perso)} destination(s) surveillee(s) "
+                      f"(+{cout} appels par releve) :")
+                for code, nom in sorted(perso.items()):
+                    print(f"  {code}  {nom}")
+            return 0
+
+        if argv[0] == "--surveiller":
+            code = resoudre_destination(argv[1])
+            ajouter_destination(code)
+            print(f"{code} ajoute au releve quotidien "
+                  f"(+{len(collecteur.HUBS)} appels par releve).")
+            return 0
+
+        if argv[0] == "--oublier":
+            code = resoudre_destination(argv[1])
+            if retirer_destination(code):
+                print(f"{code} retire du releve quotidien.")
+            else:
+                print(f"{code} n'etait pas sous surveillance.")
+            return 0
+
+        if len(argv) < 2:
+            print(USAGE.format(villes=villes))
+            return 1
+
+        ville = valider_ville(argv[0])
+        dest = resoudre_destination(argv[1])
+
+    except ValueError as e:
+        print(f"Erreur : {e}")
+        return 1
+    except IndexError:
+        print(USAGE.format(villes=villes))
+        return 1
+
+    if not collecteur.TOKEN:
+        print("Erreur : TRAVELPAYOUTS_TOKEN absent de l'environnement.")
+        return 1
+
+    print(f"Recherche en cours ({1 + 2 * len(collecteur.RABATTEMENT[ville])} "
+          f"appels API, une dizaine de secondes)...")
+    try:
+        options, erreurs = chercher_itineraires(ville, dest)
+    except ValueError as e:
+        print(f"Erreur : {e}")
+        return 1
+
+    conn = sqlite3.connect(collecteur.DB_PATH)
+    try:
+        contexte = contexte_historique(conn, ville, dest)
+    finally:
+        conn.close()
+
+    print(formater(ville, dest, options, erreurs, contexte))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

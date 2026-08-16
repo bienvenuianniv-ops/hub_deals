@@ -1,3 +1,5 @@
+import contextlib
+import io
 import json
 import os
 import sqlite3
@@ -348,6 +350,42 @@ class TestDestinationsPersonnelles(unittest.TestCase):
 
         self.assertEqual(len(actives), len(recherche.collecteur.DESTINATIONS))
         self.assertEqual(actives["BKK"], recherche.collecteur.DESTINATIONS["BKK"])
+
+
+class TestInterfaceLigneDeCommande(unittest.TestCase):
+    def _lancer(self, argv):
+        """Lance main() en capturant la sortie standard."""
+        tampon = io.StringIO()
+        with contextlib.redirect_stdout(tampon):
+            code = recherche.main(argv)
+        return code, tampon.getvalue()
+
+    def test_sans_argument_affiche_l_usage_et_echoue(self):
+        code, sortie = self._lancer([])
+        self.assertEqual(code, 1)
+        self.assertIn("Usage", sortie)
+
+    def test_ville_inconnue_affiche_un_message_clair(self):
+        code, sortie = self._lancer(["Marseille", "BKK"])
+        self.assertEqual(code, 1)
+        self.assertIn("Marseille", sortie)
+        self.assertIn("Dakar", sortie)   # liste des villes valides
+
+    def test_liste_affiche_les_destinations_surveillees(self):
+        dossier = tempfile.TemporaryDirectory()
+        chemin = os.path.join(dossier.name, "perso.json")
+        recherche.ajouter_destination("BKK", chemin=chemin)
+        original = recherche.collecteur.CHEMIN_DESTINATIONS_PERSO
+        recherche.collecteur.CHEMIN_DESTINATIONS_PERSO = chemin
+        try:
+            code, sortie = self._lancer(["--liste"])
+        finally:
+            recherche.collecteur.CHEMIN_DESTINATIONS_PERSO = original
+            dossier.cleanup()
+
+        self.assertEqual(code, 0)
+        self.assertIn("BKK", sortie)
+        self.assertIn("appels", sortie)   # le cout est rappele
 
 
 if __name__ == "__main__":

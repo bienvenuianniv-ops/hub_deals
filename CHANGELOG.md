@@ -2,6 +2,22 @@
 
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Projet personnel sans versionnage sémantique — entrées datées.
 
+## 2026-08-16
+
+### Ajouté
+- **Recherche de billet à la demande** (`recherche.py`) : interroger soi-même une route depuis
+  l'une des 5 villes vers n'importe quel code IATA, au lieu de subir les propositions du relevé.
+  Inclut le **vol direct**, que le collecteur n'interroge jamais — mesuré le 2026-08-15 sur
+  `Dakar → Brazzaville`, le direct à 932 € bat les 1001 € via Paris annoncés par le relevé. Les
+  segments ville → hub sont demandés à l'API plutôt que lus dans `RABATTEMENT`, dont les valeurs
+  estimées se sont révélées optimistes de 17 à 31 % ; le repli sur la table est signalé entre
+  parenthèses et une option entièrement mesurée passe devant une option estimée à total égal.
+  Coût : 19 appels pour Dakar.
+- **Mise sous surveillance** (`--surveiller`) : ajoute une destination au relevé quotidien via
+  `destinations_perso.json` (local, non versionné, 15 maximum, +9 appels par destination). Elle
+  bénéficie alors de la détection d'anomalie et des notifications Telegram existantes.
+- 37 → 79 tests.
+
 ## 2026-08-15
 
 ### Corrigé
