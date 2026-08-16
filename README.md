@@ -43,9 +43,10 @@ Toute anomalie déclenche une notification Telegram, qui mentionne la ville de d
 | `hub_deals_db.py` | Script principal : récupère les offres, les enregistre en base, notifie les anomalies. C'est lui qu'exécute la tâche planifiée. |
 | `anomaly_detection.py` | Logique partagée de détection d'anomalie (moyenne et écart-type historiques, z-score avec repli en pourcentage), utilisée par les deux scripts ci-dessous. |
 | `detect_anomalies.py` | Outil CLI d'analyse/diagnostic — relit la base et affiche les comparaisons, sans notifier. |
+| `recherche.py` | Recherche de billet à la demande : interroger soi-même une route, et mettre une destination sous surveillance du relevé quotidien. |
 | `test_travelpayouts.py` | Script de test brut de l'API Travelpayouts. |
 | `hub_deals_AUDIT.md` | Journal d'audit détaillé du projet (historique des décisions et correctifs). |
-| `flight_deals.db`, `flight_deals_log.txt` | Générés à l'exécution — ignorés par git. |
+| `flight_deals.db`, `flight_deals_log.txt`, `destinations_perso.json` | Générés à l'exécution — ignorés par git. |
 
 ## Installation
 
@@ -69,6 +70,32 @@ TELEGRAM_CHAT_ID=...      # optionnel — idem
 python hub_deals_db.py       # collecte + notification
 python detect_anomalies.py   # analyse/diagnostic sans notifier
 ```
+
+## Recherche à la demande
+
+Le relevé quotidien propose ce qu'il juge intéressant. Pour poser sa propre question :
+
+```bash
+python recherche.py Dakar BZV          # par code IATA
+python recherche.py Dakar Brazzaville  # par nom, pour les destinations connues
+python recherche.py Kinshasa BKK
+```
+
+La recherche interroge le **vol direct** (que le relevé automatique n'interroge jamais) et chaque
+hub disposant d'un rabattement pour cette ville, puis classe les itinéraires du moins cher au plus
+cher. Les prix d'aller sont demandés à l'API ; quand elle ne répond pas, la valeur estimée de
+`RABATTEMENT` sert de repli et est signalée entre parenthèses.
+
+Pour suivre une destination dans le temps et recevoir les alertes Telegram dessus :
+
+```bash
+python recherche.py --surveiller BKK   # +9 appels par relevé
+python recherche.py --liste
+python recherche.py --oublier BKK
+```
+
+Les destinations surveillées sont stockées dans `destinations_perso.json` (local, non versionné),
+15 au maximum. Une recherche n'écrit jamais dans la base.
 
 ## Tests
 

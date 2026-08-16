@@ -253,3 +253,89 @@ Vérification faite directement contre le vrai environnement :
 base, vraie tâche planifiée Windows, vrai token API — sans coût API additionnel (la boucle
 d'appel API reste indexée sur `HUBS`, indépendante de `RABATTEMENT`) et sans régression sur
 le comportement Dakar existant. Rien en attente.**
+
+## ✅ Recherche de billet à la demande (`recherche.py`, 2026-08-16)
+
+Chantier ouvert le 2026-08-15 (spec + plan sur la branche `recherche-billet`), exécuté le
+2026-08-16 en TDD, 6 tâches. Suite passée de **37 à 80 tests**.
+
+### Ce que le module apporte
+
+`hub_deals_db.py` fonctionne en éventail : il balaie une matrice hubs × destinations imposée et
+signale ce qu'il juge anormalement bas. `recherche.py` fait l'inverse — l'utilisateur pose sa
+propre question — avec deux différences de fond mesurées avant conception :
+
+1. **Le vol direct est interrogé**, ce que le collecteur ne fait jamais (il passe toujours par un
+   hub). Vérifié en conditions réelles le 2026-08-16 sur `Dakar → Brazzaville` : direct **932 €**
+   contre **1001 € via Paris** — le collecteur seul rate donc la meilleure option.
+2. **Les segments ville → hub sont demandés à l'API**, `RABATTEMENT` ne servant que de repli
+   signalé entre parenthèses (ses valeurs estimées se sont révélées optimistes de 17 à 31 %).
+
+Aucun coefficient correctif n'a été introduit : inventer un « +25 % » remplacerait une valeur
+fausse par une autre. À total égal, une option entièrement mesurée passe devant une option
+estimée, et un avertissement s'affiche si la meilleure option repose sur un prix estimé.
+
+**`recherche.py` n'écrit jamais dans `flight_deals.db`** — une recherche manuelle ne doit pas
+entrer dans l'historique qui nourrit la détection statistique. Vérifié : 8 219 lignes avant et
+après cinq recherches consécutives.
+
+### Destinations personnelles
+
+`--surveiller <code>` ajoute une destination au relevé quotidien via `destinations_perso.json`
+(local, gitignoré, 15 maximum, +9 appels par destination). La **lecture** vit dans
+`hub_deals_db.py` (le collecteur en a besoin), l'**écriture** dans `recherche.py` : cet ordre
+évite un import circulaire. Un JSON corrompu ou absent renvoie `{}` sans jamais faire échouer un
+relevé — c'est un fichier de confort, pas une source de vérité.
+
+### ✅ Vérification en conditions réelles (2026-08-16)
+
+Vrai token, vraie base, vraie tâche planifiée.
+
+| Vérification | Résultat |
+|---|---|
+| `recherche.py Dakar BZV` | direct 932 € en tête, devant 1001 € via Paris ✅ |
+| `recherche.py Dakar ZZZ` | « Aucun itinéraire trouvé », pas de trace Python ✅ |
+| `recherche.py Marseille BKK` | refus + liste des 5 villes ✅ |
+| `recherche.py Dakar DKR` | refus (destination = ville de départ) ✅ |
+| Écriture en base | 8 219 lignes avant **et** après 5 recherches ✅ |
+| `--surveiller` / `--liste` / `--oublier` | aller-retour complet ✅ |
+| Relevé complet avec `SIN` sous surveillance | log « 1 destination(s) personnelle(s) active(s) (+9 appels) », sortie 0 ✅ |
+| Tâche planifiée « Traqueur de vols » | `LastTaskResult = 0`, prochain déclenchement 13h00 ✅ |
+
+Relevé du 2026-08-16 09:13:51 : **210 routes** (contre 202 le matin même, soit +8 = les 8 hubs
+ayant un prix vers `SIN` ; `ADD` n'en a pas) et **947 lignes** (contre 910, soit +37). Les 37
+lignes `SIN` se répartissent sur les **5 villes de départ** — Dakar 8, Kinshasa 8, Abidjan 7,
+Brazzaville 7, Lomé 7 — écarts correspondant exactement aux entrées `RABATTEMENT` absentes.
+Aucune ligne parasite. Propriété confirmée : le prix hub → destination personnelle est interrogé
+**une seule fois** par hub (906 € depuis CMN, 553 € depuis CDG) puis réutilisé pour les 5 villes.
+
+### ⚠️ Fuite de secret trouvée et corrigée pendant la vérification
+
+`recherche.py` affichait le **token Travelpayouts en clair** : `requests` place l'URL complète
+dans ses exceptions, et un code IATA inexistant provoque un HTTP 400 par hub, donc 10 lignes
+d'erreur portant le token. Le correctif du 2026-08-15 (`masquer_secrets()` appelée dans `log()`)
+ne couvrait pas ce module, qui affiche avec `print()`. Masquage ajouté dans `_appeler()`, seul
+endroit où une exception devient du texte dans ce module, avec un test qui reproduit la fuite.
+Vérifié avec le **vrai** token, pas seulement la valeur factice des tests.
+
+**Leçon transposable :** « le point de passage unique » n'est unique que pour un chemin de sortie
+donné. `log()` couvrait le fichier journal ; un nouveau module écrivant sur `stdout` recrée le
+trou. Tout code qui transforme une exception `requests` en texte doit masquer.
+
+**Action en attente côté utilisateur :** ce token s'est affiché en clair dans une session d'outil
+avant le correctif — le régénérer sur Travelpayouts puis refaire le `setx` reste prudent.
+
+### Écarts assumés par rapport au plan
+
+Trois tests du plan étaient faux et ont été corrigés :
+
+1. `(1001-810)/810 = 23,58 %` s'affiche `+24 %` après arrondi — le plan attendait « 23 ».
+2. Le test de fusion des destinations personnelles utilisait `BKK`, **déjà** présent dans
+   `DESTINATIONS` : la fusion n'ajoutait aucune entrée et le test ne prouvait rien. Remplacé par
+   `SIN`, avec un test supplémentaire vérifiant qu'un doublon garde son nom d'origine.
+3. Le test de `--liste` réassignait `collecteur.CHEMIN_DESTINATIONS_PERSO`, sans effet : un
+   argument par défaut est figé à la définition de la fonction. `main()` passe désormais le
+   chemin explicitement.
+
+Le même piège que le point 2 s'est reproduit pendant la vérification finale : `--surveiller BKK`
+n'aurait rien prouvé (`nb_perso = 0`), d'où le choix de `SIN`.
