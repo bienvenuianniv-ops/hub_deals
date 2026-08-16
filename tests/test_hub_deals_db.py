@@ -318,15 +318,6 @@ class TestDestinationsActives(unittest.TestCase):
         self.assertIn("destinations_actives", bloc_principal)
         self.assertNotIn("for dest_iata in DESTINATIONS", bloc_principal)
 
-    def test_le_bloc_principal_sauvegarde_hors_machine(self):
-        """Garde-fou de non-regression : si l'appel disparait, la base
-        cesse silencieusement d'etre sauvegardee ailleurs que sur ce
-        disque -- et on ne s'en apercevrait qu'apres l'avoir perdue."""
-        import inspect
-        source = inspect.getsource(hub_deals_db)
-        bloc = source.split('if __name__ == "__main__":')[1]
-        self.assertIn("sauvegarder_distant", bloc)
-
     def test_le_nom_d_une_destination_personnelle_arrive_en_base(self):
         """Sans cela, une destination personnelle serait enregistree avec son
         code IATA en guise de nom (BKK au lieu de Bangkok)."""
@@ -622,6 +613,67 @@ class TestNotificationAvecRabattementMesure(unittest.TestCase):
 
         self.assertEqual(len(self.envois), 1)
         self.assertIn("810", self.envois[0])
+
+
+class TestAlerteSauvegarde(unittest.TestCase):
+    """Une sauvegarde qui echoue en silence est pire que pas de
+    sauvegarde : on se croit protege. L'echec doit se voir."""
+
+    def setUp(self):
+        self.envois = []
+        self._envoyer = hub_deals_db.envoyer_telegram
+        hub_deals_db.envoyer_telegram = lambda msg: self.envois.append(msg)
+        self._log = hub_deals_db.log
+        hub_deals_db.log = lambda m: None
+        self.conn = sqlite3.connect(":memory:")
+        hub_deals_db.init_db(self.conn)
+
+    def tearDown(self):
+        hub_deals_db.envoyer_telegram = self._envoyer
+        hub_deals_db.log = self._log
+        self.conn.close()
+
+    def test_aucune_notification_quand_la_sauvegarde_reussit(self):
+        """Notifier chaque succes produirait un bruit quotidien qu'on
+        cesserait de lire -- et l'absence du message passerait inapercue."""
+        ok = hub_deals_db.sauvegarder_et_alerter(
+            self.conn, sauver=lambda conn, dossier, journaliser=None: True)
+
+        self.assertTrue(ok)
+        self.assertEqual(self.envois, [])
+
+    def test_notifie_quand_la_sauvegarde_echoue(self):
+        ok = hub_deals_db.sauvegarder_et_alerter(
+            self.conn, sauver=lambda conn, dossier, journaliser=None: False)
+
+        self.assertFalse(ok)
+        self.assertEqual(len(self.envois), 1)
+        self.assertIn("auvegarde", self.envois[0])
+
+    def test_le_message_ne_ressemble_pas_a_une_alerte_de_prix(self):
+        """Sans distinction nette, une panne technique se confondrait avec
+        une bonne affaire dans le fil Telegram."""
+        hub_deals_db.sauvegarder_et_alerter(
+            self.conn, sauver=lambda conn, dossier, journaliser=None: False)
+
+        message = self.envois[0]
+        self.assertNotIn("bonne(s) affaire(s)", message)
+        self.assertNotIn("aviasales.com", message)
+
+    def test_une_exception_est_absorbee_et_notifiee(self):
+        def exploser(conn, dossier, journaliser=None):
+            raise OSError("git introuvable")
+
+        ok = hub_deals_db.sauvegarder_et_alerter(self.conn, sauver=exploser)
+
+        self.assertFalse(ok)
+        self.assertEqual(len(self.envois), 1)
+
+    def test_le_bloc_principal_appelle_le_garde_fou(self):
+        import inspect
+        bloc = inspect.getsource(hub_deals_db).split(
+            'if __name__ == "__main__":')[1]
+        self.assertIn("sauvegarder_et_alerter", bloc)
 
 
 class _FausseReponse:

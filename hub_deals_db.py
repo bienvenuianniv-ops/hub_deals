@@ -568,6 +568,46 @@ def envoyer_telegram(message: str) -> None:
     journaliser_message(message, "message Telegram envoye")
 
 
+def sauvegarder_et_alerter(conn: sqlite3.Connection,
+                           dossier: str = ".sauvegardes",
+                           sauver=None) -> bool:
+    """Sauvegarde hors machine, et NOTIFIE si ca echoue.
+
+    Sans cette alerte, une sauvegarde qui echoue est invisible : le
+    releve s'enregistre, l'alerte de prix part normalement, tout
+    parait sain -- et les donnees ont cesse d'etre protegees sans
+    aucun signe. Le silence est ambigu, c'est le meme angle mort que
+    le NextRunTime vide de la tache planifiee.
+
+    On ne notifie QUE l'echec : un message quotidien « sauvegarde OK »
+    deviendrait un bruit qu'on cesse de lire en une semaine, et le
+    jour ou il manquerait, personne ne le remarquerait.
+
+    Ne leve jamais : le releve est deja enregistre a ce stade.
+    """
+    if sauver is None:
+        from sauvegarde import sauvegarder_distant as sauver
+
+    try:
+        ok = sauver(conn, dossier, journaliser=log)
+    except Exception as e:
+        log(f"   -> sauvegarde distante impossible : {e}")
+        ok = False
+
+    if not ok:
+        envoyer_telegram(
+            "<b>Probleme technique -- sauvegarde impossible</b>\n\n"
+            "Le releve du jour est bien enregistre, mais la sauvegarde "
+            "hors machine a echoue.\n\n"
+            "Tes donnees ne sont plus protegees contre une panne de "
+            "disque tant que ce n'est pas repare.\n\n"
+            "A verifier : git -C .sauvegardes status"
+        )
+        log("   -> ALERTE sauvegarde envoyee")
+
+    return ok
+
+
 def verifier_et_notifier_anomalies(conn: sqlite3.Connection, date_collecte: str) -> None:
     """Compare le releve du jour a la moyenne historique de chaque
     destination (logique centralisee dans anomaly_detection.py), et
@@ -677,12 +717,9 @@ if __name__ == "__main__":
 
     # Sauvegarde hors machine. Placee en DERNIER et absorbant toute
     # erreur : a ce stade le releve est deja enregistre, une panne de
-    # git ou de reseau ne doit pas le faire echouer.
-    try:
-        from sauvegarde import sauvegarder_distant
-        sauvegarder_distant(conn, ".sauvegardes", journaliser=log)
-    except Exception as e:
-        log(f"   -> sauvegarde distante impossible : {e}")
+    # git ou de reseau ne doit pas le faire echouer -- mais elle doit
+    # se voir, d'ou la notification en cas d'echec.
+    sauvegarder_et_alerter(conn)
 
     log("=== Fin d'execution ===")
 
