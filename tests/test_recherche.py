@@ -1,6 +1,8 @@
+import json
 import os
 import sqlite3
 import sys
+import tempfile
 import unittest
 
 import requests
@@ -265,6 +267,87 @@ class TestFormatage(unittest.TestCase):
             ["DKR->IST : erreur reseau (coupure)"], None)
 
         self.assertIn("erreur reseau", sortie)
+
+
+class TestDestinationsPersonnelles(unittest.TestCase):
+    def setUp(self):
+        self.dossier = tempfile.TemporaryDirectory()
+        self.chemin = os.path.join(self.dossier.name, "destinations_perso.json")
+
+    def tearDown(self):
+        self.dossier.cleanup()
+
+    def test_fichier_absent_renvoie_un_dictionnaire_vide(self):
+        self.assertEqual(
+            recherche.collecteur.charger_destinations_perso(self.chemin), {})
+
+    def test_fichier_illisible_est_ignore_sans_faire_echouer(self):
+        """Un JSON corrompu ne doit jamais faire echouer un releve : c'est
+        un fichier de confort, pas une source de verite."""
+        with open(self.chemin, "w", encoding="utf-8") as f:
+            f.write("{ceci n'est pas du json")
+
+        self.assertEqual(
+            recherche.collecteur.charger_destinations_perso(self.chemin), {})
+
+    def test_ajoute_une_destination(self):
+        recherche.ajouter_destination("BKK", chemin=self.chemin)
+
+        with open(self.chemin, encoding="utf-8") as f:
+            self.assertEqual(json.load(f), {"BKK": "Bangkok"})
+
+    def test_reprend_le_nom_de_DESTINATIONS_quand_il_existe(self):
+        recherche.ajouter_destination("BZV", chemin=self.chemin)
+
+        contenu = recherche.collecteur.charger_destinations_perso(self.chemin)
+        self.assertEqual(contenu["BZV"], "Brazzaville")
+
+    def test_utilise_le_code_comme_nom_pour_une_destination_inconnue(self):
+        recherche.ajouter_destination("XYZ", chemin=self.chemin)
+
+        contenu = recherche.collecteur.charger_destinations_perso(self.chemin)
+        self.assertEqual(contenu["XYZ"], "XYZ")
+
+    def test_retire_une_destination(self):
+        recherche.ajouter_destination("BKK", chemin=self.chemin)
+
+        self.assertTrue(recherche.retirer_destination("BKK", chemin=self.chemin))
+        self.assertEqual(
+            recherche.collecteur.charger_destinations_perso(self.chemin), {})
+
+    def test_retirer_une_destination_absente_renvoie_faux(self):
+        self.assertFalse(recherche.retirer_destination("BKK", chemin=self.chemin))
+
+    def test_refuse_au_dela_du_plafond(self):
+        for i in range(recherche.MAX_DESTINATIONS_PERSO):
+            recherche.ajouter_destination(f"Z{i:02d}", chemin=self.chemin)
+
+        with self.assertRaises(ValueError) as ctx:
+            recherche.ajouter_destination("BKK", chemin=self.chemin)
+        self.assertIn(str(recherche.MAX_DESTINATIONS_PERSO), str(ctx.exception))
+
+    def test_destinations_actives_fusionne_sans_ecraser_les_originales(self):
+        # SIN et non BKK : Bangkok figure DEJA dans DESTINATIONS, la fusion
+        # n'ajouterait alors aucune entree et le test ne prouverait rien.
+        self.assertNotIn("SIN", recherche.collecteur.DESTINATIONS)
+        recherche.ajouter_destination("SIN", chemin=self.chemin)
+
+        actives = recherche.collecteur.destinations_actives(self.chemin)
+
+        self.assertIn("SIN", actives)                    # la personnelle
+        self.assertIn("DKR", actives)                    # les originales
+        self.assertEqual(actives["DKR"], "Dakar")
+        self.assertEqual(len(actives), len(recherche.collecteur.DESTINATIONS) + 1)
+
+    def test_une_destination_personnelle_deja_connue_garde_son_nom_d_origine(self):
+        """BKK est deja dans DESTINATIONS : la fusion ne doit ni la dupliquer
+        ni ecraser son nom par celui du fichier personnel."""
+        recherche.ajouter_destination("BKK", chemin=self.chemin)
+
+        actives = recherche.collecteur.destinations_actives(self.chemin)
+
+        self.assertEqual(len(actives), len(recherche.collecteur.DESTINATIONS))
+        self.assertEqual(actives["BKK"], recherche.collecteur.DESTINATIONS["BKK"])
 
 
 if __name__ == "__main__":

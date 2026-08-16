@@ -80,6 +80,32 @@ EQUIVALENCES = {
     "PAR": {"CDG"},
 }
 
+# Destinations ajoutees par l'utilisateur via recherche.py --surveiller.
+# Fichier de confort, local et non versionne : un releve ne doit jamais
+# echouer parce qu'il est absent ou mal forme.
+CHEMIN_DESTINATIONS_PERSO = "destinations_perso.json"
+
+
+def charger_destinations_perso(chemin=CHEMIN_DESTINATIONS_PERSO):
+    """Lit les destinations personnelles. Renvoie {} si le fichier est
+    absent, illisible ou mal forme -- jamais d'exception."""
+    try:
+        with open(chemin, encoding="utf-8") as f:
+            contenu = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {}
+    if not isinstance(contenu, dict):
+        return {}
+    return {str(k): str(v) for k, v in contenu.items()}
+
+
+def destinations_actives(chemin=CHEMIN_DESTINATIONS_PERSO):
+    """Destinations imposees + destinations personnelles.
+
+    Les originales ne sont jamais ecrasees : en cas de doublon, c'est le
+    nom d'origine qui prime."""
+    return {**charger_destinations_perso(chemin), **DESTINATIONS}
+
 # Code IATA de chaque ville de depart. Sert a ne pas enregistrer de route
 # qui ramene une ville chez elle : plusieurs villes de depart figurent aussi
 # dans DESTINATIONS (DKR, ABJ, BZV, FIH), et sans ce garde-fou on produit des

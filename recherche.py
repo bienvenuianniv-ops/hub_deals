@@ -17,11 +17,14 @@ entrer dans l'historique qui nourrit la detection statistique, sinon les
 recherches de l'utilisateur fausseraient ses propres alertes.
 """
 
+import json
 import time
 
 import requests
 
 import hub_deals_db as collecteur
+
+MAX_DESTINATIONS_PERSO = 15  # chaque destination coute 9 appels par releve
 
 
 def valider_ville(argument: str) -> str:
@@ -224,3 +227,33 @@ def formater(ville, dest, options, erreurs, contexte):
             lignes.append(f"    - {e}")
 
     return "\n".join(lignes)
+
+
+def ajouter_destination(code, chemin=None):
+    """Place une destination sous surveillance du releve quotidien."""
+    chemin = chemin or collecteur.CHEMIN_DESTINATIONS_PERSO
+    perso = collecteur.charger_destinations_perso(chemin)
+
+    if code not in perso and len(perso) >= MAX_DESTINATIONS_PERSO:
+        raise ValueError(
+            f"Plafond atteint : {MAX_DESTINATIONS_PERSO} destinations "
+            f"personnelles au maximum (chacune coute "
+            f"{len(collecteur.HUBS)} appels par releve). "
+            f"Retires-en une avec --oublier.")
+
+    perso[code] = collecteur.DESTINATIONS.get(code, code)
+    with open(chemin, "w", encoding="utf-8") as f:
+        json.dump(perso, f, ensure_ascii=False, indent=2, sort_keys=True)
+
+
+def retirer_destination(code, chemin=None):
+    """Retire une destination de la surveillance. Renvoie True si elle y
+    etait, False sinon."""
+    chemin = chemin or collecteur.CHEMIN_DESTINATIONS_PERSO
+    perso = collecteur.charger_destinations_perso(chemin)
+    if code not in perso:
+        return False
+    del perso[code]
+    with open(chemin, "w", encoding="utf-8") as f:
+        json.dump(perso, f, ensure_ascii=False, indent=2, sort_keys=True)
+    return True
