@@ -350,6 +350,17 @@ class TestDestinationsActives(unittest.TestCase):
 class TestMesurerRabattements(unittest.TestCase):
     """La fonction de prix est injectee : aucun appel reseau ici."""
 
+    def setUp(self):
+        # mesurer_rabattements journalise les segments non mesures : sans
+        # ce remplacement, les tests ecrivent dans le vrai
+        # flight_deals_log.txt et polluent l'historique d'exploitation.
+        self._log_original = hub_deals_db.log
+        self.messages_logges = []
+        hub_deals_db.log = self.messages_logges.append
+
+    def tearDown(self):
+        hub_deals_db.log = self._log_original
+
     def _prix(self, table):
         """Fabrique une fausse get_prix_route a partir d'un dict
         {(origine, destination): prix}."""
@@ -530,6 +541,13 @@ class TestNotificationAvecRabattementMesure(unittest.TestCase):
         self._mesurer = hub_deals_db.mesurer_rabattements
         hub_deals_db.envoyer_telegram = lambda msg: self.envois.append(msg)
 
+        # sans ce remplacement, ces tests ecrivent « Notification Telegram
+        # envoyee » dans le vrai flight_deals_log.txt, ou la ligne devient
+        # un faux temoignage d'exploitation.
+        self._log_original = hub_deals_db.log
+        self.messages_logges = []
+        hub_deals_db.log = self.messages_logges.append
+
         self.conn = sqlite3.connect(":memory:")
         hub_deals_db.init_db(self.conn)
         # une route jugee anormalement basse au dernier releve
@@ -548,6 +566,7 @@ class TestNotificationAvecRabattementMesure(unittest.TestCase):
     def tearDown(self):
         hub_deals_db.envoyer_telegram = self._envoyer
         hub_deals_db.mesurer_rabattements = self._mesurer
+        hub_deals_db.log = self._log_original
         self.conn.close()
 
     def test_le_message_affiche_le_rabattement_mesure(self):
