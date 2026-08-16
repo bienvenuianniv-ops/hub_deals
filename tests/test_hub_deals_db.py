@@ -418,5 +418,101 @@ class TestMesurerRabattements(unittest.TestCase):
         self.assertEqual(len(noms), len(set(noms)))
 
 
+class TestCorrigerAnomalies(unittest.TestCase):
+    def _anomalie(self, ville="Dakar", hub="Abidjan", prix=810.0,
+                  moyenne=900.0, baisse=10.0):
+        return {
+            "destination": "Nairobi", "destination_code": "NBO",
+            "hub": hub, "ville_depart": ville,
+            "prix_actuel": prix, "moyenne_historique": moyenne,
+            "ecart_type": 50.0, "z_score": 1.8, "baisse_pct": baisse,
+            "methode": "z-score", "nb_releves_historique": 6,
+            "date_depart": "2026-09-05T10:00:00+00:00", "lien": "/search/x",
+        }
+
+    def test_decale_le_prix_du_jour_et_la_moyenne(self):
+        """Le rabattement est une constante additive de tout l'historique :
+        on decale les deux du meme montant."""
+        mesures = {("Dakar", "Abidjan"): {"prix": 409, "table": 200,
+                                          "mesure": True}}
+
+        [a] = hub_deals_db.corriger_anomalies([self._anomalie()], mesures)
+
+        self.assertEqual(a["prix_actuel"], 1019)        # 810 + 209
+        self.assertEqual(a["moyenne_historique"], 1109)  # 900 + 209
+        self.assertEqual(a["rabattement_mesure"], 409)
+
+    def test_preserve_l_ecart_absolu(self):
+        """Le decalage ne doit pas creer ni detruire d'ecart : c'est ce qui
+        garantit que le z-score reste valable."""
+        mesures = {("Dakar", "Abidjan"): {"prix": 409, "table": 200,
+                                          "mesure": True}}
+
+        [a] = hub_deals_db.corriger_anomalies([self._anomalie()], mesures)
+
+        self.assertEqual(a["moyenne_historique"] - a["prix_actuel"], 90)
+
+    def test_recalcule_le_pourcentage_sur_l_echelle_decalee(self):
+        mesures = {("Dakar", "Abidjan"): {"prix": 409, "table": 200,
+                                          "mesure": True}}
+
+        [a] = hub_deals_db.corriger_anomalies([self._anomalie()], mesures)
+
+        self.assertEqual(a["baisse_pct"], 8.1)   # 90 / 1109
+
+    def test_ne_decale_pas_une_anomalie_non_mesuree(self):
+        mesures = {("Dakar", "Paris"): {"prix": 300, "table": 300,
+                                        "mesure": False}}
+
+        [a] = hub_deals_db.corriger_anomalies(
+            [self._anomalie(hub="Paris")], mesures)
+
+        self.assertEqual(a["prix_actuel"], 810)
+        self.assertEqual(a["moyenne_historique"], 900)
+        self.assertEqual(a["baisse_pct"], 10.0)
+        self.assertIsNone(a["rabattement_mesure"])
+
+    def test_ne_decale_pas_une_anomalie_sans_mesure_du_tout(self):
+        [a] = hub_deals_db.corriger_anomalies([self._anomalie()], {})
+
+        self.assertEqual(a["prix_actuel"], 810)
+        self.assertIsNone(a["rabattement_mesure"])
+
+    def test_retrie_apres_correction(self):
+        """Le decalage reduit le pourcentage : sans re-tri, l'ordre affiche
+        ne correspondrait plus aux pourcentages affiches.
+
+        Le cas est choisi pour que l'ordre s'INVERSE reellement -- un jeu
+        de donnees ou l'ordre resterait le meme passerait ce test meme si
+        le tri etait absent, et ne prouverait donc rien."""
+        anomalies = [
+            self._anomalie(hub="Abidjan", prix=810, moyenne=900, baisse=10.0),
+            self._anomalie(hub="Paris", prix=920, moyenne=1000, baisse=8.0),
+        ]
+        mesures = {
+            # +300 de decalage : 90/1200 = 7,5 %, sous les 8 % de Paris
+            ("Dakar", "Abidjan"): {"prix": 500, "table": 200, "mesure": True},
+            ("Dakar", "Paris"): {"prix": 300, "table": 300, "mesure": False},
+        }
+
+        corrigees = hub_deals_db.corriger_anomalies(anomalies, mesures)
+
+        self.assertEqual([a["hub"] for a in corrigees], ["Paris", "Abidjan"])
+        self.assertEqual(corrigees[0]["baisse_pct"], 8.0)
+        self.assertEqual(corrigees[1]["baisse_pct"], 7.5)
+
+    def test_ne_modifie_pas_les_anomalies_d_origine(self):
+        """La fonction rend de nouveaux dictionnaires : muter l'entree
+        rendrait le diagnostic incoherent avec ce que la base contient."""
+        origine = self._anomalie()
+        mesures = {("Dakar", "Abidjan"): {"prix": 409, "table": 200,
+                                          "mesure": True}}
+
+        hub_deals_db.corriger_anomalies([origine], mesures)
+
+        self.assertEqual(origine["prix_actuel"], 810)
+        self.assertNotIn("rabattement_mesure", origine)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -402,6 +402,48 @@ def mesurer_rabattements(couples, get_prix=None, pause: bool = True) -> dict:
     return mesures
 
 
+def corriger_anomalies(anomalies: list, mesures: dict) -> list:
+    """
+    Applique le rabattement mesure au prix du jour ET a la moyenne.
+
+    Le rabattement est une constante additive de tout l'historique d'une
+    route : la meme valeur entre dans chacune de ses lignes. Decaler les
+    deux du meme montant preserve donc exactement l'ecart absolu et
+    l'ecart-type, donc le z-score. Seul le pourcentage change, son
+    denominateur ayant augmente.
+
+    Hypothese assumee : on substitue une constante a une autre. Le total
+    affiche est « ce que vaudrait cette route si le rabattement mesure
+    aujourd'hui s'appliquait a tout l'historique ». C'est la seule
+    transformation qui garde tous les chiffres du message coherents.
+
+    Les anomalies d'origine ne sont pas modifiees.
+    """
+    corrigees = []
+    for a in anomalies:
+        b = dict(a)
+        mesure = mesures.get((a["ville_depart"], a["hub"]))
+
+        if mesure and mesure["mesure"]:
+            delta = mesure["prix"] - mesure["table"]
+            b["prix_actuel"] = a["prix_actuel"] + delta
+            b["moyenne_historique"] = a["moyenne_historique"] + delta
+            if b["moyenne_historique"] > 0:
+                b["baisse_pct"] = round(
+                    (b["moyenne_historique"] - b["prix_actuel"])
+                    / b["moyenne_historique"] * 100, 1)
+            b["rabattement_mesure"] = mesure["prix"]
+        else:
+            b["rabattement_mesure"] = None
+
+        corrigees.append(b)
+
+    # le decalage change les pourcentages : sans re-tri, l'ordre affiche
+    # ne correspondrait plus aux pourcentages affiches
+    corrigees.sort(key=lambda x: x["baisse_pct"], reverse=True)
+    return corrigees
+
+
 def masquer_secrets(message: str) -> str:
     """
     Remplace les secrets par *** dans un message destine au log.
