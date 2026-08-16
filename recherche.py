@@ -144,3 +144,83 @@ def chercher_itineraires(ville, dest, get_prix=None, pause=True):
     # les estimations se sont revelees optimistes de 17 a 31 %
     options.sort(key=lambda o: (o["total"], o["estime"]))
     return options, erreurs
+
+
+def contexte_historique(conn, ville, dest):
+    """Ce que la base sait deja de cette route, ou None si elle l'ignore.
+
+    Lecture seule : ce module n'ecrit jamais dans flight_deals.db.
+    """
+    ligne = conn.execute("""
+        SELECT COUNT(DISTINCT date_collecte), MIN(total_estime)
+        FROM offres
+        WHERE ville_depart = ? AND destination_code = ?
+    """, (ville, dest)).fetchone()
+
+    if not ligne or not ligne[0]:
+        return None
+
+    nb_releves, minimum = ligne
+    date_minimum = conn.execute("""
+        SELECT date_collecte FROM offres
+        WHERE ville_depart = ? AND destination_code = ? AND total_estime = ?
+        ORDER BY date_collecte LIMIT 1
+    """, (ville, dest, minimum)).fetchone()[0]
+
+    return {
+        "nb_releves": nb_releves,
+        "minimum": minimum,
+        "date_minimum": date_minimum,
+    }
+
+
+def formater(ville, dest, options, erreurs, contexte):
+    """Produit la sortie texte de la recherche."""
+    nom_dest = collecteur.DESTINATIONS.get(dest, dest)
+    lignes = [f"\n{ville} -> {nom_dest} ({dest})\n"]
+
+    if not options:
+        lignes.append("  Aucun itineraire trouve : le cache de l'API ne connait")
+        lignes.append("  aucun prix pour cette route. Ce n'est pas une panne.")
+    else:
+        for o in options:
+            if o["hub"] is None:
+                detail = " " * 18
+            elif o["aller_estime"]:
+                detail = f"({o['prix_aller']:.0f})+{o['prix_principal']:5.0f} ="
+            else:
+                detail = f" {o['prix_aller']:4.0f} +{o['prix_principal']:5.0f} ="
+            provenance = "[aller estime]" if o["aller_estime"] else "[API]"
+            lignes.append(
+                f"  {o['libelle']:<18}{detail}{o['total']:6.0f} EUR   "
+                f"depart {o['date_depart'][:10]}   {provenance}")
+
+        meilleure = options[0]
+        lignes.append(f"\n  Meilleure option : {meilleure['libelle']}, "
+                      f"{meilleure['total']:.0f} EUR")
+        if meilleure["lien"]:
+            lignes.append(f"  https://www.aviasales.com{meilleure['lien']}")
+        if meilleure["estime"]:
+            lignes.append("  Attention : son prix d'aller est estime, pas mesure -- "
+                          "le total reel peut etre plus eleve.")
+
+    lignes.append("")
+    if contexte is None:
+        lignes.append("  Historique : route inconnue de ta base.")
+        lignes.append(f"  -> python recherche.py --surveiller {dest}"
+                      f"  (+{len(collecteur.HUBS)} appels par releve)")
+    else:
+        lignes.append(
+            f"  Historique : {contexte['nb_releves']} releves, meilleur prix vu "
+            f"{contexte['minimum']:.0f} EUR le {contexte['date_minimum'][:10]}.")
+        if options:
+            ecart = (options[0]["total"] - contexte["minimum"]) / contexte["minimum"] * 100
+            lignes.append(f"  Prix actuel : {ecart:+.0f} % par rapport a ce minimum.")
+
+    if erreurs:
+        lignes.append("")
+        lignes.append("  Segments non interroges :")
+        for e in erreurs:
+            lignes.append(f"    - {e}")
+
+    return "\n".join(lignes)
