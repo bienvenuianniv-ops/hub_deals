@@ -152,56 +152,75 @@ PAUSE_ENTRE_APPELS = 0.4
 # changement de code necessaire, et AUCUN appel API supplementaire : le prix
 # du vol hub->destination est interroge une seule fois puis reutilise pour
 # chaque ville de depart.
+# Provenance de chaque valeur, marquee en fin de ligne :
+#   [M]  mesure a l'API le 2026-08-16 (23 segments sur 40)
+#   [NM] aucun prix API a cette date -- valeur conservee, potentiellement
+#        vieillie ; son age est celui indique en tete de bloc
+#
+# Les 17 [NM] ne sont pas des oublis : l'endpoint ne renvoie rien pour ces
+# routes. Aucune valeur n'est inventee pour les combler. Noter que CDG est
+# [NM] pour les CINQ villes alors que Paris sort en tete de la plupart des
+# meilleurs totaux -- c'est la limite principale de cette table.
 RABATTEMENT = {
+    # mesure 2026-08-16 ; les [NM] datent d'une estimation manuelle de
+    # juillet 2026 et sont donc les plus suspectes de la table
     "Dakar": {
-        "CMN": {"prix": 400, "duree_h": 4},
-        "CDG": {"prix": 300, "duree_h": 6},
-        "IST": {"prix": 400, "duree_h": 7},
-        "ADD": {"prix": 500, "duree_h": 6},
-        "NBO": {"prix": 500, "duree_h": 8},
-        "ABJ": {"prix": 200, "duree_h": 2},
-        "JNB": {"prix": 500, "duree_h": 10},
-        "CAI": {"prix": 380, "duree_h": 7},
-        "LOS": {"prix": 450, "duree_h": 4},
+        "CMN": {"prix": 468, "duree_h": 4},   # [M] etait 400
+        "CDG": {"prix": 300, "duree_h": 6},   # [NM]
+        "IST": {"prix": 525, "duree_h": 7},   # [M] etait 400
+        "ADD": {"prix": 500, "duree_h": 6},   # [NM]
+        "NBO": {"prix": 500, "duree_h": 8},   # [NM]
+        "ABJ": {"prix": 409, "duree_h": 2},   # [M] etait 200
+        "JNB": {"prix": 500, "duree_h": 10},  # [NM]
+        "CAI": {"prix": 380, "duree_h": 7},   # [NM]
+        "LOS": {"prix": 450, "duree_h": 4},   # [NM]
     },
+    # mesure 2026-08-16 ; les [NM] datent du releve API du 2026-08-03
     "Abidjan": {
-        "CMN": {"prix": 563, "duree_h": 3},
-        "CDG": {"prix": 511, "duree_h": 8},
-        "IST": {"prix": 700, "duree_h": 9},
-        "NBO": {"prix": 374, "duree_h": 8},
-        "JNB": {"prix": 350, "duree_h": 9},
-        "CAI": {"prix": 340, "duree_h": 6},
-        "LOS": {"prix": 400, "duree_h": 2},
+        "CMN": {"prix": 574, "duree_h": 3},   # [M] etait 563
+        "CDG": {"prix": 511, "duree_h": 8},   # [NM]
+        "IST": {"prix": 672, "duree_h": 9},   # [M] etait 700 -- SUR-estime
+        "NBO": {"prix": 883, "duree_h": 8},   # [M] etait 374
+        "JNB": {"prix": 350, "duree_h": 9},   # [NM]
+        "CAI": {"prix": 715, "duree_h": 6},   # [M] etait 340
+        "LOS": {"prix": 806, "duree_h": 2},   # [M] etait 400
     },
+    # mesure 2026-08-16 ; les [NM] etaient des estimations manuelles
     "Brazzaville": {
-        "CMN": {"prix": 700, "duree_h": 6},
-        "CDG": {"prix": 600, "duree_h": 7},
-        "IST": {"prix": 800, "duree_h": 9},
-        "ADD": {"prix": 700, "duree_h": 5},
-        "NBO": {"prix": 750, "duree_h": 6},  # estimation, pas de prix reel trouve -- a verifier
-        "JNB": {"prix": 450, "duree_h": 4},  # estimation, pas de prix direct trouve -- a verifier
-        "CAI": {"prix": 750, "duree_h": 8},  # estimation, pas de prix direct trouve -- a verifier
-        "LOS": {"prix": 400, "duree_h": 3},
+        "CMN": {"prix": 700, "duree_h": 6},   # [NM]
+        "CDG": {"prix": 600, "duree_h": 7},   # [NM]
+        "IST": {"prix": 800, "duree_h": 9},   # [NM]
+        "ADD": {"prix": 700, "duree_h": 5},   # [NM]
+        "NBO": {"prix": 970, "duree_h": 6},   # [M] etait 750 (estimation)
+        "JNB": {"prix": 634, "duree_h": 4},   # [M] etait 450 (estimation)
+        "CAI": {"prix": 1193, "duree_h": 8},  # [M] etait 750 (estimation)
+        "LOS": {"prix": 1083, "duree_h": 3},  # [M] etait 400
     },
+    # mesure 2026-08-16 ; les [NM] datent du releve API du 2026-08-15,
+    # donc encore frais
     "Lome": {
-        "CMN": {"prix": 1289, "duree_h": 4},
-        "CDG": {"prix": 279, "duree_h": 12},
-        "IST": {"prix": 718, "duree_h": 11},
-        "NBO": {"prix": 849, "duree_h": 9},  # prix reel ; duree estimee, non renvoyee par l'API
-        "ABJ": {"prix": 441, "duree_h": 2},
-        "CAI": {"prix": 552, "duree_h": 13},
-        "LOS": {"prix": 313, "duree_h": 7},
+        "CMN": {"prix": 1289, "duree_h": 4},  # [M] inchange
+        "CDG": {"prix": 279, "duree_h": 12},  # [NM]
+        "IST": {"prix": 718, "duree_h": 11},  # [NM]
+        "NBO": {"prix": 848, "duree_h": 9},   # [M] etait 849 ; duree estimee
+        "ABJ": {"prix": 434, "duree_h": 2},   # [M] etait 441
+        "CAI": {"prix": 552, "duree_h": 13},  # [NM]
+        "LOS": {"prix": 313, "duree_h": 7},   # [NM]
     },
+    # mesure 2026-08-16 ; les [NM] datent du releve API du 2026-08-15.
+    # Ville la plus fiable : 8 des 9 valeurs confirmees inchangees a un
+    # jour d'intervalle -- c'est ce qui a montre que le probleme de cette
+    # table est le VIEILLISSEMENT, pas un biais systematique.
     "Kinshasa": {
-        "CMN": {"prix": 738, "duree_h": 7},
-        "CDG": {"prix": 377, "duree_h": 11},
-        "IST": {"prix": 650, "duree_h": 12},
-        "ADD": {"prix": 682, "duree_h": 21},
-        "NBO": {"prix": 555, "duree_h": 13},
-        "ABJ": {"prix": 796, "duree_h": 6},  # prix reel ; duree estimee, non renvoyee par l'API
-        "JNB": {"prix": 321, "duree_h": 22},
-        "CAI": {"prix": 412, "duree_h": 6},
-        "LOS": {"prix": 630, "duree_h": 8},
+        "CMN": {"prix": 738, "duree_h": 7},   # [M] inchange
+        "CDG": {"prix": 377, "duree_h": 11},  # [NM]
+        "IST": {"prix": 651, "duree_h": 12},  # [M] etait 650
+        "ADD": {"prix": 682, "duree_h": 21},  # [M] inchange
+        "NBO": {"prix": 555, "duree_h": 13},  # [M] inchange
+        "ABJ": {"prix": 796, "duree_h": 6},   # [M] inchange ; duree estimee
+        "JNB": {"prix": 321, "duree_h": 22},  # [M] inchange
+        "CAI": {"prix": 412, "duree_h": 6},   # [M] inchange
+        "LOS": {"prix": 630, "duree_h": 8},   # [M] inchange
     },
 }
 
