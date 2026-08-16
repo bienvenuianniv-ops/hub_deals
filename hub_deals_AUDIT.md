@@ -427,3 +427,69 @@ inversion.
 **Leçon :** modifier une fonction impose de recenser ses appelants dans les tests, pas seulement
 d'écrire les nouveaux. Et toute fonction appelant `log()` doit voir `log()` neutralisé dans ses
 tests, sans quoi le journal d'exploitation devient un mélange de réel et de simulé.
+
+## ✅ `RABATTEMENT` remis à jour + historique recalculé (2026-08-16)
+
+Demandé après coup par l'utilisateur, alors que la spec précédente avait écarté cette approche.
+Elle reste complémentaire : la mesure à l'alerte corrige ce qui s'affiche, cette mise à jour
+corrige ce qui est **stocké** (classement en base, `recherche.py`, futurs relevés).
+
+### Le piège, chiffré avant d'agir
+
+Écrire les nouvelles valeurs sans toucher à l'historique aurait été destructeur :
+
+| | |
+|---|---|
+| Lignes dont `total_estime` change | **4 383 / 10 081 (43 %)** |
+| Plus gros décalage | Brazzaville via Lagos, **+683 €** |
+| Relevés avant que la moyenne rattrape | **~49**, soit ≈ 7 semaines |
+
+Sur ces 43 % de routes, le prix du jour serait passé au-dessus de sa propre moyenne historique et
+**aucune anomalie n'aurait pu se déclencher pendant sept semaines**. La détection aurait paru
+fonctionner — aucune erreur, aucun log — tout en étant muette. C'est le type de panne le plus
+coûteux : silencieuse et vraisemblable.
+
+### La sortie : recalcul rétroactif
+
+`prix_vol_hub` et `rabattement` sont stockés **séparément** dans `offres`. `total_estime` a donc pu
+être recalculé sur toute la base, ce qui applique le même décalage additif à l'ensemble de
+l'historique d'une route — exactement le raisonnement validé le matin même pour l'affichage, mais
+appliqué en base. Les écarts relatifs et les z-scores sont préservés.
+
+Garde-fous exécutés **avant** l'`UPDATE` : vérification que l'invariant
+`total_estime = prix_vol_hub + rabattement` tenait déjà (0 violation), et qu'aucun couple
+(ville, hub) de la base n'était absent de `RABATTEMENT` (0 orphelin). Sauvegarde
+`flight_deals.db.sauvegarde-20260816-103327` prise avant toute écriture.
+
+### Vérification après migration
+
+| Contrôle | Résultat |
+|---|---|
+| Lignes en base | 10 081 → **10 081** (aucune perdue) |
+| Lignes mises à jour | 4 383 — exactement le chiffre prédit |
+| `total_estime = prix_vol_hub + rabattement` | **0 violation** |
+| Rabattement en base ≠ table | **0 ligne** |
+| Détection sur le dernier relevé | mêmes 3 anomalies, **mêmes totaux** (894 / 1041 / 1169 €) |
+| Routes sous leur moyenne | 124 sur 913 comparables — la détection n'est pas gelée |
+
+**Convergence des deux mécanismes :** la correction d'affichage du matin produisait déjà
+894 / 1041 / 1169 € pour ces trois routes. Après mise à jour de la table, la détection calcule les
+mêmes valeurs directement. C'est la meilleure preuve que le décalage additif était correct.
+
+### Provenance tracée dans la table
+
+Chaque valeur porte `[M]` (mesurée le 2026-08-16) ou `[NM]` (aucun prix API, valeur conservée),
+avec l'âge des `[NM]` indiqué en tête de chaque bloc de ville. Les 17 `[NM]` ne sont pas des
+oublis et rien n'est inventé pour les combler.
+
+**Kinshasa a servi de témoin :** 8 de ses 9 valeurs, relevées la veille, sont revenues inchangées.
+C'est ce qui a établi que le défaut de cette table est le **vieillissement** et non un biais
+systématique — un point que la mesure de deux segments seulement, dans la spec précédente, avait
+fait interpréter à tort comme un « sous-dimensionnement de 17 à 31 % ».
+
+### Un test fragile corrigé au passage
+
+Deux tests écrits le matin même codaient en dur `400`, la valeur de `Dakar/CMN`, et ont donc cassé
+dès la mise à jour de la table. Ils vérifiaient « la table vaut 400 » au lieu de « le repli utilise
+la valeur de la table ». Ils lisent désormais `RABATTEMENT` — **une valeur de données ne doit pas
+être recopiée dans un test**, sinon toute mise à jour légitime des données casse la suite.

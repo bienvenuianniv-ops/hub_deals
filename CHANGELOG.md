@@ -4,6 +4,27 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Pro
 
 ## 2026-08-16
 
+### Modifié
+- **`RABATTEMENT` remis à jour et historique recalculé rétroactivement.** Les 23 segments pour
+  lesquels l'API renvoie un prix ont été réécrits d'après une mesure du 2026-08-16 ; 15 valeurs
+  changent, dont Brazzaville → Lagos (400 € → **1 083 €**), Abidjan → Nairobi (374 € → 883 €) et
+  Dakar → Abidjan (200 € → 409 €). Deux valeurs étaient **sur**-estimées (Abidjan → Istanbul
+  700 € → 672 €). Les 17 segments sans prix API sont conservés tels quels et marqués `[NM]` dans
+  la table, avec l'âge de la valeur : aucune n'est inventée pour combler un trou. `CDG` est `[NM]`
+  pour les cinq villes, ce qui reste la limite principale de cette table.
+- **Le recalcul rétroactif était indispensable, pas cosmétique.** Changer la table sans toucher
+  l'historique aurait fait bondir `total_estime` sur **4 383 lignes (43 % de la base)** tandis que
+  les moyennes historiques seraient restées basses : sur ces routes, le prix du jour serait passé
+  systématiquement au-dessus de sa propre moyenne, et **plus aucune anomalie n'aurait été détectée
+  pendant environ 49 relevés, soit sept semaines**. `prix_vol_hub` et `rabattement` étant stockés
+  séparément, `total_estime` a pu être recalculé sur toute la base (sauvegarde prise avant). Le
+  décalage étant additif et appliqué à l'ensemble de l'historique d'une route, les écarts relatifs
+  et les z-scores sont préservés.
+- Vérification après migration : 10 081 lignes intactes, 0 violation de
+  `total_estime = prix_vol_hub + rabattement`, 0 ligne portant un rabattement différent de la
+  table, et la détection retrouve **les mêmes anomalies aux mêmes totaux** que ceux calculés par
+  la correction d'affichage — les deux mécanismes convergent.
+
 ### Corrigé
 - **Les alertes Telegram annonçaient des totaux faux.** `total_estime` additionne le prix du vol
   hub → destination et une valeur de `RABATTEMENT` écrite en dur. Mesure des 40 segments le

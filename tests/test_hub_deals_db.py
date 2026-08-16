@@ -371,13 +371,21 @@ class TestMesurerRabattements(unittest.TestCase):
             return {"price": valeur, "departure_at": "2026-09-05T10:00:00+00:00"}
         return get_prix
 
+    # Les valeurs de RABATTEMENT sont des DONNEES : elles changent a chaque
+    # remise a jour de la table. Les lire ici plutot que de les coder en dur
+    # fait porter le test sur le comportement (« le repli utilise la valeur
+    # de la table ») et non sur le contenu du jour.
+    def _table(self, ville, hub):
+        return hub_deals_db.RABATTEMENT[ville][hub]["prix"]
+
     def test_renvoie_le_prix_api_quand_il_existe(self):
         mesures = hub_deals_db.mesurer_rabattements(
             [("Dakar", "Casablanca")],
-            get_prix=self._prix({("DKR", "CMN"): 468}), pause=False)
+            get_prix=self._prix({("DKR", "CMN"): 999}), pause=False)
 
-        self.assertEqual(mesures[("Dakar", "Casablanca")]["prix"], 468)
-        self.assertEqual(mesures[("Dakar", "Casablanca")]["table"], 400)
+        self.assertEqual(mesures[("Dakar", "Casablanca")]["prix"], 999)
+        self.assertEqual(mesures[("Dakar", "Casablanca")]["table"],
+                         self._table("Dakar", "CMN"))
         self.assertTrue(mesures[("Dakar", "Casablanca")]["mesure"])
 
     def test_replie_sur_la_table_quand_l_api_ne_repond_rien(self):
@@ -386,8 +394,9 @@ class TestMesurerRabattements(unittest.TestCase):
         mesures = hub_deals_db.mesurer_rabattements(
             [("Dakar", "Paris")], get_prix=self._prix({}), pause=False)
 
-        self.assertEqual(mesures[("Dakar", "Paris")]["prix"], 300)
-        self.assertEqual(mesures[("Dakar", "Paris")]["table"], 300)
+        attendu = self._table("Dakar", "CDG")
+        self.assertEqual(mesures[("Dakar", "Paris")]["prix"], attendu)
+        self.assertEqual(mesures[("Dakar", "Paris")]["table"], attendu)
         self.assertFalse(mesures[("Dakar", "Paris")]["mesure"])
 
     def test_replie_sur_la_table_en_cas_d_erreur_reseau(self):
@@ -397,7 +406,8 @@ class TestMesurerRabattements(unittest.TestCase):
         mesures = hub_deals_db.mesurer_rabattements(
             [("Dakar", "Casablanca")], get_prix=get_prix, pause=False)
 
-        self.assertEqual(mesures[("Dakar", "Casablanca")]["prix"], 400)
+        self.assertEqual(mesures[("Dakar", "Casablanca")]["prix"],
+                         self._table("Dakar", "CMN"))
         self.assertFalse(mesures[("Dakar", "Casablanca")]["mesure"])
 
     def test_dedoublonne_les_couples(self):
