@@ -514,21 +514,58 @@ def log(message: str) -> None:
         f.write(ligne + "\n")
 
 
+def journaliser_message(message: str, entete: str) -> None:
+    """Ecrit dans le journal le message destine a Telegram, encadre par des
+    marqueurs.
+
+    Necessaire parce qu'un bot ne peut PAS relire ses propres messages
+    sortants : l'API Telegram n'expose que ce qu'il RECOIT (getUpdates).
+    Sans cette trace, verifier apres coup ce qui a ete notifie suppose
+    d'avoir le telephone sous la main.
+
+    Le corps est conserve tel quel, HTML compris, pour rester fidele a ce
+    qui part reellement. Il passe par log(), donc par masquer_secrets().
+    """
+    log(f"--- {entete} ---")
+    log(message)
+    log("--- fin du message ---")
+
+
 def envoyer_telegram(message: str) -> None:
     """Envoie un message via le bot Telegram, si le token et le chat_id
-    sont renseignes. Ne fait rien silencieusement sinon (pour ne pas
-    bloquer le script tant que Telegram n'est pas encore configure)."""
+    sont renseignes.
+
+    Le message est journalise dans tous les cas -- y compris quand Telegram
+    n'est pas configure, cas jusqu'ici totalement silencieux ou l'on ne
+    savait meme pas ce qui AURAIT ete notifie.
+
+    Le code HTTP de reponse est verifie : Telegram refuse par exemple un
+    HTML mal ferme avec un 400. Sans ce controle, un message refuse etait
+    compte comme envoye et le journal devenait un faux temoignage.
+    """
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        journaliser_message(
+            message, "message NON envoye (Telegram non configure)")
         return
+
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     try:
-        requests.post(url, data={
+        reponse = requests.post(url, data={
             "chat_id": TELEGRAM_CHAT_ID,
             "text": message,
             "parse_mode": "HTML",
         }, timeout=15)
     except requests.exceptions.RequestException as e:
         log(f"   -> ERREUR envoi Telegram : {e}")
+        journaliser_message(message, "message Telegram NON parti (erreur reseau)")
+        return
+
+    if reponse.status_code != 200:
+        log(f"   -> ECHEC Telegram : HTTP {reponse.status_code} {reponse.text[:200]}")
+        journaliser_message(message, "message Telegram REFUSE")
+        return
+
+    journaliser_message(message, "message Telegram envoye")
 
 
 def verifier_et_notifier_anomalies(conn: sqlite3.Connection, date_collecte: str) -> None:

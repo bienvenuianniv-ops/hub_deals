@@ -4,6 +4,25 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Pro
 
 ## 2026-08-16
 
+### Ajouté
+- **Le message Telegram envoyé est désormais journalisé**, encadré par des marqueurs
+  `--- message Telegram envoye ---` / `--- fin du message ---`. Un bot ne peut pas relire ses
+  propres messages sortants — l'API Telegram n'expose que ce qu'il *reçoit* (`getUpdates`) — donc
+  sans cette trace, vérifier après coup ce qui a été notifié supposait d'avoir le téléphone sous
+  la main. Le corps est conservé tel quel, HTML compris, pour rester fidèle à ce qui part, et
+  passe par `log()` donc par `masquer_secrets()`. Le message est aussi journalisé quand Telegram
+  n'est **pas** configuré : ce cas était jusqu'ici totalement silencieux, on ne savait même pas ce
+  qui aurait été notifié.
+
+### Corrigé
+- **Le code de réponse de Telegram n'était pas vérifié.** `requests.post` était appelé sans
+  contrôle du statut : un message refusé — Telegram répond 400 sur du HTML mal fermé, par exemple —
+  était compté comme envoyé, et le journal affichait « Notification Telegram envoyee ». Le statut
+  est désormais vérifié et un refus est journalisé avec son code et le début de la réponse. 97 →
+  101 tests.
+
+## 2026-08-16
+
 ### Modifié
 - **Les 5 rabattements vers Paris étaient les valeurs les plus fausses de la table, sur le hub le
   plus utilisé.** `v1/prices/cheap` ne renvoie rien pour `ville → CDG`, mais `v3/prices_for_dates`
