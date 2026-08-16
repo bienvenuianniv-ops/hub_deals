@@ -17,6 +17,10 @@ entrer dans l'historique qui nourrit la detection statistique, sinon les
 recherches de l'utilisateur fausseraient ses propres alertes.
 """
 
+import time
+
+import requests
+
 import hub_deals_db as collecteur
 
 
@@ -50,3 +54,93 @@ def resoudre_destination(argument: str) -> str:
     raise ValueError(
         f"Destination inconnue : {argument}. Donne son code IATA "
         f"(3 lettres, par exemple BKK pour Bangkok).")
+
+
+def _appeler(get_prix, origine, destination, erreurs, pause):
+    """Appelle la fonction de prix en absorbant les erreurs reseau.
+
+    Renvoie l'offre (dict) ou {} si aucun prix. Une erreur reseau est
+    consignee dans `erreurs` et traitee comme une absence de prix : une
+    coupure sur un segment ne doit pas faire echouer toute la recherche.
+    """
+    try:
+        offre = get_prix(origine, destination)
+    except requests.exceptions.RequestException as e:
+        erreurs.append(f"{origine}->{destination} : erreur reseau ({e})")
+        return {}
+    if pause:
+        time.sleep(collecteur.PAUSE_ENTRE_APPELS)
+    return offre or {}
+
+
+def chercher_itineraires(ville, dest, get_prix=None, pause=True):
+    """Construit et classe les itineraires de `ville` vers `dest`.
+
+    Renvoie (options, erreurs). Le vol direct figure dans le meme
+    classement que les trajets via hub.
+
+    get_prix est injectable pour les tests ; par defaut on interroge
+    reellement l'API via le collecteur.
+    """
+    if get_prix is None:
+        get_prix = collecteur.get_prix_route
+
+    origine = collecteur.VILLE_IATA[ville]
+    if dest == origine:
+        raise ValueError(
+            f"Destination identique a la ville de depart ({dest}) : "
+            f"cet itineraire n'a pas de sens.")
+
+    erreurs = []
+    options = []
+
+    # 1. le vol direct -- le collecteur ne l'interroge jamais
+    offre = _appeler(get_prix, origine, dest, erreurs, pause)
+    if offre.get("price"):
+        depart = offre.get("departure_at") or ""
+        options.append({
+            "libelle": "direct",
+            "hub": None,
+            "prix_aller": None,
+            "aller_estime": False,
+            "prix_principal": offre["price"],
+            "total": offre["price"],
+            "estime": False,
+            "date_depart": depart,
+            "lien": collecteur.construire_lien(origine, dest, depart),
+        })
+
+    # 2. un itineraire par hub disposant d'un rabattement pour cette ville
+    for hub, cout in collecteur.RABATTEMENT[ville].items():
+        if hub == dest:
+            continue  # aller a X via X, c'est le vol direct deja traite
+
+        offre_aller = _appeler(get_prix, origine, hub, erreurs, pause)
+        if offre_aller.get("price"):
+            prix_aller = offre_aller["price"]
+            aller_estime = False
+        else:
+            prix_aller = cout["prix"]  # repli sur la valeur estimee
+            aller_estime = True
+
+        offre_principale = _appeler(get_prix, hub, dest, erreurs, pause)
+        if not offre_principale.get("price"):
+            continue  # aucun repli honnete possible sur ce segment
+
+        depart = offre_principale.get("departure_at") or ""
+        options.append({
+            "libelle": f"via {collecteur.HUBS[hub]['nom']}",
+            "hub": hub,
+            "prix_aller": prix_aller,
+            "aller_estime": aller_estime,
+            "prix_principal": offre_principale["price"],
+            "total": prix_aller + offre_principale["price"],
+            "estime": aller_estime,
+            "date_depart": depart,
+            "lien": collecteur.construire_lien(hub, dest, depart),
+        })
+
+    # a total egal, l'option entierement mesuree passe devant l'estimee :
+    # les estimations se sont revelees optimistes de 17 a 31 %
+    options.sort(key=lambda o: (o["total"], o["estime"]))
+    return options, erreurs
