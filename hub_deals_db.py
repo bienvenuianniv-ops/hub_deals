@@ -275,7 +275,7 @@ def construire_lien(origin: str, destination: str, departure_at: str) -> str:
 
 
 def enregistrer_prix(conn: sqlite3.Connection, hub_iata: str, dest_iata: str,
-                     offre: dict, date_collecte: str) -> int:
+                     offre: dict, date_collecte: str, dest_nom: str = None) -> int:
     """
     Insere un prix de route dans la base, une fois par ville de depart
     ayant un cout de rabattement defini pour ce hub.
@@ -284,10 +284,15 @@ def enregistrer_prix(conn: sqlite3.Connection, hub_iata: str, dest_iata: str,
     (hub, destination), puis on insere une ligne par ville. Interroger
     une fois par ville triplerait les appels pour un resultat identique.
 
+    `dest_nom` permet a l'appelant de fournir le nom d'une destination
+    personnelle (absente de DESTINATIONS) sans que cette fonction ait a
+    relire le fichier : elle est appelee une fois par route trouvee,
+    ~200 fois par releve.
+
     Renvoie le nombre de lignes inserees.
     """
     hub_nom = HUBS[hub_iata]["nom"]
-    dest_nom = DESTINATIONS.get(dest_iata, dest_iata)
+    dest_nom = dest_nom or DESTINATIONS.get(dest_iata, dest_iata)
     prix_vol = offre.get("price") or 0
     date_depart = offre.get("departure_at") or ""
     lien = construire_lien(hub_iata, dest_iata, date_depart)
@@ -431,11 +436,17 @@ if __name__ == "__main__":
     total_routes_trouvees = 0
     total_lignes_inserees = 0
 
+    destinations = destinations_actives()
+    nb_perso = len(destinations) - len(DESTINATIONS)
+    if nb_perso:
+        log(f"{nb_perso} destination(s) personnelle(s) active(s) "
+            f"(+{nb_perso * len(HUBS)} appels)")
+
     for hub_iata, hub_info in HUBS.items():
         log(f"Interrogation des destinations depuis {hub_info['nom']} ({hub_iata})...")
         routes_hub = 0
 
-        for dest_iata in DESTINATIONS:
+        for dest_iata in destinations:
             # Pas de vol vers le hub lui-meme
             if dest_iata == hub_iata or dest_iata in EQUIVALENCES.get(hub_iata, set()):
                 continue
@@ -454,7 +465,8 @@ if __name__ == "__main__":
                 continue
 
             total_lignes_inserees += enregistrer_prix(
-                conn, hub_iata, dest_iata, offre, date_collecte
+                conn, hub_iata, dest_iata, offre, date_collecte,
+                dest_nom=destinations[dest_iata]
             )
             routes_hub += 1
 

@@ -291,5 +291,52 @@ class TestRabattement(unittest.TestCase):
         )
 
 
+class TestDestinationsActives(unittest.TestCase):
+    """La boucle de collecte doit balayer les destinations personnelles en
+    plus des destinations imposees."""
+
+    def test_destinations_actives_contient_les_originales_sans_fichier(self):
+        actives = hub_deals_db.destinations_actives("fichier-qui-nexiste-pas.json")
+        self.assertEqual(actives, hub_deals_db.DESTINATIONS)
+
+    def test_la_boucle_principale_utilise_destinations_actives(self):
+        """Garde-fou de non-regression : si quelqu'un remet DESTINATIONS en
+        dur dans la boucle, les destinations personnelles cessent
+        silencieusement d'etre collectees."""
+        import inspect
+        source = inspect.getsource(hub_deals_db)
+        bloc_principal = source.split('if __name__ == "__main__":')[1]
+        self.assertIn("destinations_actives", bloc_principal)
+        self.assertNotIn("for dest_iata in DESTINATIONS", bloc_principal)
+
+    def test_le_nom_d_une_destination_personnelle_arrive_en_base(self):
+        """Sans cela, une destination personnelle serait enregistree avec son
+        code IATA en guise de nom (BKK au lieu de Bangkok)."""
+        conn = sqlite3.connect(":memory:")
+        hub_deals_db.init_db(conn)
+        offre = {"price": 100, "departure_at": "2026-09-01T10:00:00+00:00"}
+
+        hub_deals_db.enregistrer_prix(
+            conn, "CMN", "BKK", offre, "2026-08-15 12:00:00", dest_nom="Bangkok")
+
+        noms = [r[0] for r in conn.execute(
+            "SELECT DISTINCT destination_nom FROM offres")]
+        conn.close()
+        self.assertEqual(noms, ["Bangkok"])
+
+    def test_le_nom_reste_celui_de_DESTINATIONS_si_non_precise(self):
+        conn = sqlite3.connect(":memory:")
+        hub_deals_db.init_db(conn)
+        offre = {"price": 100, "departure_at": "2026-09-01T10:00:00+00:00"}
+
+        hub_deals_db.enregistrer_prix(
+            conn, "CMN", "DKR", offre, "2026-08-15 12:00:00")
+
+        noms = [r[0] for r in conn.execute(
+            "SELECT DISTINCT destination_nom FROM offres")]
+        conn.close()
+        self.assertEqual(noms, ["Dakar"])
+
+
 if __name__ == "__main__":
     unittest.main()
