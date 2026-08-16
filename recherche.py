@@ -67,11 +67,17 @@ def _appeler(get_prix, origine, destination, erreurs, pause):
     Renvoie l'offre (dict) ou {} si aucun prix. Une erreur reseau est
     consignee dans `erreurs` et traitee comme une absence de prix : une
     coupure sur un segment ne doit pas faire echouer toute la recherche.
+
+    Le message est masque : requests place l'URL COMPLETE dans ses
+    exceptions, token de query string compris. Le collecteur masque dans
+    log(), mais ce module affiche avec print() -- c'est donc ICI, ou
+    l'exception devient du texte, qu'est le point de passage unique.
     """
     try:
         offre = get_prix(origine, destination)
     except requests.exceptions.RequestException as e:
-        erreurs.append(f"{origine}->{destination} : erreur reseau ({e})")
+        erreurs.append(collecteur.masquer_secrets(
+            f"{origine}->{destination} : erreur reseau ({e})"))
         return {}
     if pause:
         time.sleep(collecteur.PAUSE_ENTRE_APPELS)

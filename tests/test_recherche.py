@@ -169,6 +169,34 @@ class TestChercherItineraires(unittest.TestCase):
         self.assertIn("TST", erreurs[0])
 
 
+class TestMasquageDesSecrets(unittest.TestCase):
+    """requests place l'URL COMPLETE dans ses exceptions -- token compris.
+    Le collecteur masque via log() ; recherche.py affiche avec print(), donc
+    il doit masquer lui-meme au moment ou l'exception devient du texte."""
+
+    def setUp(self):
+        self._token = recherche.collecteur.TOKEN
+        recherche.collecteur.TOKEN = "TOKEN_FACTICE_A_MASQUER"
+
+    def tearDown(self):
+        recherche.collecteur.TOKEN = self._token
+
+    def test_le_token_n_apparait_pas_dans_le_message_d_erreur(self):
+        def get_prix(origine, destination):
+            raise requests.exceptions.RequestException(
+                "400 Client Error for url: "
+                "https://api.travelpayouts.com/v1/prices/cheap"
+                "?origin=DKR&destination=ZZZ&token=TOKEN_FACTICE_A_MASQUER")
+
+        erreurs = []
+        recherche._appeler(get_prix, "DKR", "ZZZ", erreurs, pause=False)
+
+        self.assertEqual(len(erreurs), 1)
+        self.assertNotIn("TOKEN_FACTICE_A_MASQUER", erreurs[0])
+        self.assertIn("***", erreurs[0])
+        self.assertIn("DKR", erreurs[0])   # le message reste exploitable
+
+
 class TestContexteHistorique(unittest.TestCase):
     def setUp(self):
         self.conn = sqlite3.connect(":memory:")
