@@ -72,7 +72,9 @@ mesurer_rabattements(couples, get_prix=None, pause=True) -> dict
 
 - `couples` : itérable de `(ville, hub_nom)` — le nom de hub, car c'est ce que porte la colonne
   `hub_origine` des anomalies, pas le code IATA.
-- Retour : `{(ville, hub_nom): {"prix": float, "mesure": bool}}`.
+- Retour : `{(ville, hub_nom): {"prix": float, "table": float, "mesure": bool}}`.
+  `table` est la valeur de `RABATTEMENT`, rendue avec la mesure pour que le calcul du décalage
+  (`prix − table`) reste une fonction pure de son entrée, sans relire les globales.
 - `get_prix` est **injectable** : les tests passent une fausse fonction, aucun appel réseau.
 
 **Piège d'identifiants à traiter explicitement.** Les anomalies portent le *nom* du hub
