@@ -2,6 +2,44 @@
 
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Projet personnel sans versionnage sémantique — entrées datées.
 
+## 2026-09-11
+
+### Corrigé
+- **Les notifications d'anomalies sont découpées pour tenir dans la limite de Telegram.** L'API
+  refuse tout `sendMessage` de plus de 4096 caractères avec un `HTTP 400 message is too long`, et
+  **perd le message entier — elle ne le tronque pas**. Un relevé de 72 anomalies pèse ~13 000
+  caractères. Résultat : **32 notifications refusées entre le 2026-08-17 et le 2026-09-08**, puis
+  5 refus supplémentaires pour un motif différent (voir ci-dessous). Aucune alerte de prix n'est
+  partie depuis le 2026-08-18. La coupe tombe toujours *entre* deux anomalies, jamais à
+  l'intérieur : un bloc porte du HTML, et le trancher produirait un balisage mal fermé — donc un
+  400 de plus, pour une autre raison. Chaque morceau reprend l'en-tête suivi de `(i/n)` ; un
+  message unique n'est pas numéroté, `(1/1)` n'apprenant rien.
+- **Le journal ne ment plus sur ce qui est parti.** `envoyer_telegram()` ne renvoyait rien, et
+  l'appelant journalisait `Notification Telegram envoyee pour N anomalie(s)` de façon
+  inconditionnelle, juste après l'appel. L'appelant ne *pouvait pas* savoir — c'est là qu'est la
+  racine, pas dans la taille du message. Ce faux témoignage a masqué 37 refus consécutifs pendant
+  trois semaines : le journal affirmait chaque jour qu'une notification était partie, le seul
+  démenti étant l'absence de sonnerie sur le téléphone. La fonction renvoie désormais un booléen,
+  et le compte rendu distingue trois états — succès complet, `ECHEC` total, et `ECHEC partiel :
+  i/n message(s) partis`. Annoncer un succès complet quand 1 morceau sur 4 passe serait le même
+  mensonge sous une autre forme.
+
+### Su mais non corrigé
+- **Le token du bot est révoqué** (`HTTP 401 Unauthorized` depuis le 2026-09-09, 5 occurrences).
+  Indépendant du découpage : même réparé, le tuyau reste fermé tant que `TELEGRAM_BOT_TOKEN` ne
+  porte pas un token valide. À régénérer côté BotFather.
+- **Le détecteur s'est déréglé tout seul.** Le taux d'anomalies est passé de 4,2 % à 7,8 % des
+  routes en onze jours, sans événement de marché correspondant. Cause : le basculement
+  `pourcentage` → `z-score`. Tant qu'une route a moins de `MIN_RELEVES_ZSCORE` (4) relevés, elle
+  est jugée au seuil de 8 % ; au-delà, à « 1,5 σ **et** ≥ 3 % ». L'historique s'accumulant, **100 %
+  du parc est passé en z-score le 2026-08-20** — le seuil effectif a glissé de 8 % à ~3 % sans
+  décision. Seules 13 des 72 alertes du 2026-09-11 passeraient l'ancienne règle. S'y ajoute que les
+  deux queues de la distribution sont deux fois plus grasses qu'une gaussienne (14,7 % à z ≥ +1,5,
+  10,0 % à z ≤ −1,5, contre 6,7 % attendus) : « 1,5 écart-type » ne vaut pas « événement rare » sur
+  ces prix. Économie médiane des 72 alertes : **47 €**, dont 39 sous 50 €. Recalibrage à faire.
+
+118 → 137 tests.
+
 ## 2026-08-16
 
 ### Ajouté

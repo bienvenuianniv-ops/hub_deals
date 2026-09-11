@@ -42,6 +42,10 @@ LOG_PATH = "flight_deals_log.txt"
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
+LIMITE_TELEGRAM = 4096  # plafond impose par l'API Telegram sur sendMessage.
+                        # Au-dela : HTTP 400 « message is too long », et le
+                        # message entier est perdu -- pas tronque.
+
 HUBS = {
     "CMN": {"nom": "Casablanca"},
     "CDG": {"nom": "Paris"},
@@ -531,9 +535,54 @@ def journaliser_message(message: str, entete: str) -> None:
     log("--- fin du message ---")
 
 
-def envoyer_telegram(message: str) -> None:
+def decouper_message(blocs: list, entete: str) -> list:
+    """Repartit des blocs de texte en messages respectant LIMITE_TELEGRAM.
+
+    Telegram refuse tout sendMessage de plus de 4096 caracteres avec un
+    HTTP 400 « message is too long ». Un releve de 72 anomalies pese
+    ~11 000 caracteres : entre le 2026-08-17 et le 2026-09-08, 32
+    notifications ont ete perdues faute de ce decoupage.
+
+    La coupe tombe TOUJOURS entre deux blocs, jamais a l'interieur : un
+    bloc porte du HTML (<b>...</b>), et le couper en deux produirait un
+    balisage mal ferme -- donc un 400 de plus, pour une autre raison.
+
+    L'entete est repete sur chaque morceau, suivi de « (i/n) » des qu'il
+    y en a plusieurs. Un message unique n'est pas numerote : « (1/1) »
+    n'apprend rien.
+    """
+    if not blocs:
+        return []
+
+    # marge pour le suffixe « (12/12) » ajoute apres coup a l'entete
+    RESERVE_NUMEROTATION = 16
+    budget = LIMITE_TELEGRAM - len(entete) - RESERVE_NUMEROTATION
+
+    groupes = []
+    courant = []
+    taille = 0
+    for bloc in blocs:
+        cout = len(bloc) + 1  # +1 pour le "\n" de jointure
+        # 'courant' non vide : un bloc seul plus gros que le budget part
+        # quand meme dans son propre message, sinon la boucle ne finirait pas
+        if courant and taille + cout > budget:
+            groupes.append(courant)
+            courant, taille = [], 0
+        courant.append(bloc)
+        taille += cout
+    if courant:
+        groupes.append(courant)
+
+    nb = len(groupes)
+    return [
+        "\n".join([entete if nb == 1 else f"{entete} ({i}/{nb})"] + groupe)
+        for i, groupe in enumerate(groupes, start=1)
+    ]
+
+
+def envoyer_telegram(message: str) -> bool:
     """Envoie un message via le bot Telegram, si le token et le chat_id
-    sont renseignes.
+    sont renseignes. Renvoie True si Telegram l'a accepte.
 
     Le message est journalise dans tous les cas -- y compris quand Telegram
     n'est pas configure, cas jusqu'ici totalement silencieux ou l'on ne
@@ -542,11 +591,14 @@ def envoyer_telegram(message: str) -> None:
     Le code HTTP de reponse est verifie : Telegram refuse par exemple un
     HTML mal ferme avec un 400. Sans ce controle, un message refuse etait
     compte comme envoye et le journal devenait un faux temoignage.
+
+    Le booleen renvoye est ce qui permet a l'appelant de ne pas rejouer ce
+    mensonge a son tour : sans lui, il ne POUVAIT pas savoir.
     """
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         journaliser_message(
             message, "message NON envoye (Telegram non configure)")
-        return
+        return False
 
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     try:
@@ -558,14 +610,15 @@ def envoyer_telegram(message: str) -> None:
     except requests.exceptions.RequestException as e:
         log(f"   -> ERREUR envoi Telegram : {e}")
         journaliser_message(message, "message Telegram NON parti (erreur reseau)")
-        return
+        return False
 
     if reponse.status_code != 200:
         log(f"   -> ECHEC Telegram : HTTP {reponse.status_code} {reponse.text[:200]}")
         journaliser_message(message, "message Telegram REFUSE")
-        return
+        return False
 
     journaliser_message(message, "message Telegram envoye")
+    return True
 
 
 def sauvegarder_et_alerter(conn: sqlite3.Connection,
@@ -633,22 +686,36 @@ def verifier_et_notifier_anomalies(conn: sqlite3.Connection, date_collecte: str)
     nb_mesures = sum(1 for a in anomalies if a["rabattement_mesure"] is not None)
     log(f"Rabattement mesure pour {nb_mesures}/{len(anomalies)} anomalie(s).")
 
-    lignes = [f"<b>{len(anomalies)} bonne(s) affaire(s) detectee(s) !</b>\n"]
+    entete = f"<b>{len(anomalies)} bonne(s) affaire(s) detectee(s) !</b>"
+    blocs = []
     for a in anomalies:
         if a["rabattement_mesure"] is not None:
             note = f"Rabattement mesure ce jour : {a['rabattement_mesure']:.0f}\u20ac"
         else:
             note = "Rabattement estime, non mesure ce jour"
-        lignes.append(
+        blocs.append(
             f"\n<b>{a['destination']}</b> (depuis {a['hub']}, au depart de {a['ville_depart']})\n"
             f"{a['prix_actuel']:.0f}\u20ac (moyenne habituelle : {a['moyenne_historique']:.0f}\u20ac, "
             f"-{a['baisse_pct']:.0f}%)\n"
             f"{note}\n"
             f"https://www.aviasales.com{a['lien']}"
         )
-    message = "\n".join(lignes)
-    envoyer_telegram(message)
-    log(f"Notification Telegram envoyee pour {len(anomalies)} anomalie(s).")
+
+    morceaux = decouper_message(blocs, entete)
+    partis = sum(1 for m in morceaux if envoyer_telegram(m))
+
+    # ce compte rendu ne doit affirmer QUE ce qui est verifie : l'ancienne
+    # version annoncait l'envoi sans regarder le resultat, et a masque
+    # 32 refus consecutifs pendant trois semaines
+    if partis == len(morceaux):
+        log(f"Notification Telegram envoyee pour {len(anomalies)} anomalie(s) "
+            f"en {len(morceaux)} message(s).")
+    elif partis == 0:
+        log(f"ECHEC : aucune notification partie pour {len(anomalies)} "
+            f"anomalie(s) ({len(morceaux)} message(s) refuse(s)).")
+    else:
+        log(f"ECHEC partiel : {partis}/{len(morceaux)} message(s) partis "
+            f"pour {len(anomalies)} anomalie(s).")
 
 
 if __name__ == "__main__":
