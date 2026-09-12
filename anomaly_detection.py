@@ -23,21 +23,45 @@ Principe (hybride : z-score quand l'historique le permet, pourcentage sinon)
      MIN_RELEVES_ZSCORE, on retombe sur le seuil en pourcentage, qui ne
      demande pas d'estimer une dispersion.
 
+  3. Quelle que soit la methode, une anomalie doit representer au moins
+     ECONOMIE_MINIMALE euros d'economie. Un pourcentage ne dit rien de ce
+     qu'on gagne reellement : -12% sur une route a 500 EUR, c'est 60 EUR.
+
   Et en deca de MIN_RELEVES_HISTORIQUE releves anterieurs, la route n'est
   pas jugee du tout : comparer a une observation unique reviendrait a
   signaler le bruit quotidien d'un prix de billet.
 
   z_score = (moyenne_historique - prix_du_jour) / ecart_type_historique
 
-  Un z-score de 1.5 signifie : ce prix est 1.5 ecart-type en dessous de
-  la moyenne habituelle de cette route precise.
+  Un z-score de 2 signifie : ce prix est 2 ecarts-types en dessous de la
+  moyenne habituelle de cette route precise.
+
+Recalibrage du 2026-09-12
+  Le reglage precedent (z >= 1.5, plancher 3%) remontait 79 alertes par
+  releve en mediane, jusqu'a 112, pour une economie mediane de 64 EUR.
+  Mesure sur les 15 derniers releves : les routes suivies sont tres
+  stables (coefficient de variation median 2,8%), si bien que 1,5
+  ecart-type ne pesait qu'environ 4% de baisse. Le plancher a 3% ne
+  filtrait donc plus rien et le detecteur signalait le bruit du marche.
+
+  Le backtest causal (reference limitee aux releves anterieurs) donne,
+  avec le reglage actuel : 16 alertes par releve en mediane (8 a 26),
+  d'une economie mediane de 146 EUR.
+
+  A noter : monter le z-score seul ne suffisait pas. A z >= 2.5 sans
+  plancher, le volume tombait de moitie mais l'economie mediane BAISSAIT
+  a 54 EUR -- on retenait des baisses statistiquement rares sur des
+  routes ultra-stables, donc de tout petits montants. C'est le plancher
+  en pourcentage et le seuil en euros qui portent la qualite.
 """
 
 import sqlite3
 import statistics
 
-SEUIL_ZSCORE = 1.5  # nombre d'ecarts-types sous la moyenne pour declencher
-                    # une anomalie, quand l'historique est assez fourni
+SEUIL_ZSCORE = 2.0  # nombre d'ecarts-types sous la moyenne pour declencher
+                    # une anomalie, quand l'historique est assez fourni.
+                    # Etait a 1.5 jusqu'au 2026-09-12 -- voir la note de
+                    # recalibrage en fin d'en-tete.
 
 SEUIL_BAISSE = 0.08  # repli en pourcentage, utilise tant que la route n'a
                      # pas MIN_RELEVES_ZSCORE releves d'historique
@@ -53,10 +77,17 @@ MIN_RELEVES_ZSCORE = 4  # en dessous, l'ecart-type calcule sur si peu de
                         # points n'est pas fiable -- on prefere le seuil
                         # en pourcentage
 
-PLANCHER_BAISSE_ZSCORE = 0.03  # meme en mode z-score, on ignore les
-                               # baisses inferieures a 3% : sur une route
-                               # tres stable, 1.5 ecart-type peut ne
-                               # representer que quelques euros
+PLANCHER_BAISSE_ZSCORE = 0.06  # meme en mode z-score, on ignore les
+                               # baisses inferieures a 6% : sur une route
+                               # tres stable, 2 ecarts-types ne pesent
+                               # que quelques euros. Etait a 3%.
+
+ECONOMIE_MINIMALE = 80  # euros gagnes par rapport a la moyenne habituelle,
+                        # en dessous desquels la baisse ne vaut pas une
+                        # notification. Ce critere est le seul des trois
+                        # qui soit aveugle au prix du billet : c'est
+                        # volontaire, il rattrape les routes bon marche ou
+                        # un joli pourcentage ne represente que 40 EUR.
 
 
 def get_dernier_releve(conn: sqlite3.Connection) -> str:
@@ -170,6 +201,10 @@ def detecter_anomalies(
             methode = "pourcentage"
             z_score = None
             declenche = baisse_pct >= SEUIL_BAISSE * 100
+
+        # garde-fou commun aux deux methodes : ce qu'on gagne en euros
+        economie = moyenne - total_estime
+        declenche = declenche and economie >= ECONOMIE_MINIMALE
 
         if mode_diagnostic or declenche:
             resultats.append({
