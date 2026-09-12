@@ -217,6 +217,9 @@ def detecter_anomalies(
                 "ecart_type": round(ecart_type, 2) if ecart_type is not None else None,
                 "z_score": round(z_score, 2) if z_score is not None else None,
                 "baisse_pct": round(baisse_pct, 1),
+                # invariant par rapport au rabattement, contrairement au
+                # pourcentage : c'est ce chiffre qui justifie l'alerte
+                "economie": round(economie, 2),
                 "methode": methode,
                 "nb_releves_historique": info["nb_releves"],
                 "date_depart": date_depart,

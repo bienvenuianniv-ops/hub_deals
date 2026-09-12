@@ -32,6 +32,8 @@ Un critère s'ajoute aux deux méthodes : la baisse doit représenter au moins *
 (`ECONOMIE_MINIMALE`). C'est le seul seuil aveugle au prix du billet, et c'est voulu — il rattrape
 les routes bon marché, où un joli pourcentage ne pèse que quelques dizaines d'euros.
 
+Le message d'alerte affiche cette économie en euros. C'est volontaire : le rabattement mesuré du jour décale le prix *et* la moyenne du même montant, ce qui laisse l'économie absolue intacte mais **change le pourcentage affiché** — il peut donc passer sous le plancher de détection sans que l'affaire ait changé. L'économie en euros, elle, ne bouge pas.
+
 Le minimum de deux relevés antérieurs (`MIN_RELEVES_HISTORIQUE`) évite de comparer le prix du jour à une observation unique : un billet d'avion bouge assez d'un jour à l'autre pour qu'une telle « référence » ne signale que du bruit.
 
 Le z-score rend le seuil relatif à la volatilité propre de chaque route : une baisse de 6 % sur une route très stable peut être plus significative qu'une baisse de 15 % sur une route erratique. Mais il demande assez de points pour que l'écart-type veuille dire quelque chose — d'où le repli en pourcentage.

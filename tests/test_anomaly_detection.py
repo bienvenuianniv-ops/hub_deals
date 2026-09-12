@@ -287,6 +287,21 @@ class TestSeuilsStricts(unittest.TestCase):
 
         self.assertEqual(anomalies, [])
 
+    def test_le_resultat_porte_l_economie_en_euros(self):
+        """L'economie en euros est desormais un critere de declenchement :
+        elle doit voyager avec l'anomalie, sinon le message ne peut pas
+        justifier l'alerte autrement que par un pourcentage."""
+        for i, prix in enumerate([1000, 1000, 1010, 990], start=1):
+            _inserer_offre(self.conn, "Kinshasa", "Casablanca", "BRU", "Bruxelles",
+                           prix, f"2026-08-0{i} 10:00:00")
+        _inserer_offre(self.conn, "Kinshasa", "Casablanca", "BRU", "Bruxelles", 880,
+                       "2026-08-05 10:00:00")
+
+        [a] = anomaly_detection.detecter_anomalies(
+            self.conn, date_collecte="2026-08-05 10:00:00")
+
+        self.assertEqual(a["economie"], 120.0)
+
     def test_une_vraie_bonne_affaire_passe_les_trois_criteres(self):
         """Garde-fou inverse : un reglage trop strict ne doit pas etouffer
         les alertes qui valent le deplacement."""

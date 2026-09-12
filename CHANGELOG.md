@@ -4,6 +4,21 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Pro
 
 ## 2026-09-12
 
+### Corrigé
+- **Le message d'alerte affiche désormais l'économie en euros, et n'est plus justifié par le seul
+  pourcentage.** `corriger_anomalies()` recalcule le pourcentage sur l'échelle décalée par le
+  rabattement mesuré : un `-5 %` pouvait donc s'afficher sous un plancher annoncé à 6 %. Mesuré sur
+  le message du 2026-09-12 : la correction **abaisse** le pourcentage dans **27 cas sur 34** (0,9
+  point en médiane, 1,8 au maximum) et le **remonte** dans les 7 autres ; **43 des 66 blocs envoyés**
+  affichaient un pourcentage sous 6 %.
+- **Choix délibéré : on ne refiltre pas sur le pourcentage corrigé.** Le rabattement n'est mesuré que
+  pour les routes *déjà* détectées. Un refiltrage ne pourrait donc qu'en retirer, jamais rattraper
+  celles que la même correction ferait repasser au-dessus du plancher : il serait unilatéral et
+  couperait des affaires réelles pour un simple effet de dénominateur. L'économie en euros, elle, est
+  exactement préservée par le décalage (l'écart absolu ne bouge pas) et c'est un critère de
+  déclenchement depuis le recalibrage — c'est donc elle qui justifie l'alerte dans le message.
+- Champ `economie` ajouté à chaque anomalie par `detecter_anomalies()`.
+
 ### Modifié
 - **Recalibrage du détecteur : `z ≥ 2`, plancher de baisse à 6 %, et une économie minimale de
   80 €.** Le relevé du matin avait encore remonté 66 alertes. Mesuré sur les 15 derniers relevés,
