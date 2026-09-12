@@ -455,6 +455,21 @@ def corriger_anomalies(anomalies: list, mesures: dict) -> list:
     aujourd'hui s'appliquait a tout l'historique ». C'est la seule
     transformation qui garde tous les chiffres du message coherents.
 
+    On NE refiltre PAS sur le pourcentage corrige, et c'est delibere.
+    Mesure du 2026-09-12 : la correction abaisse le pourcentage dans 27 cas
+    sur 34, de 0.9 point en mediane, mais elle le REMONTE dans les 7 autres.
+    Or le rabattement n'est mesure que pour les routes deja detectees : un
+    refiltrage ne pourrait donc qu'en retirer, jamais rattraper celles que
+    la meme correction ferait passer au-dessus du plancher. Il serait
+    unilateral, et couperait des affaires reelles pour un effet de
+    denominateur.
+
+    La coherence du message est assuree autrement : l'economie en euros,
+    elle, est exactement preservee par le decalage (l'ecart absolu ne
+    bouge pas), et c'est un critere de declenchement a part entiere depuis
+    le recalibrage. C'est donc elle que le message affiche pour justifier
+    l'alerte, plutot qu'un pourcentage qui depend du rabattement.
+
     Les anomalies d'origine ne sont pas modifiees.
     """
     corrigees = []
@@ -697,6 +712,7 @@ def verifier_et_notifier_anomalies(conn: sqlite3.Connection, date_collecte: str)
             f"\n<b>{a['destination']}</b> (depuis {a['hub']}, au depart de {a['ville_depart']})\n"
             f"{a['prix_actuel']:.0f}\u20ac (moyenne habituelle : {a['moyenne_historique']:.0f}\u20ac, "
             f"-{a['baisse_pct']:.0f}%)\n"
+            f"Economie : {a['economie']:.0f}€\n"
             f"{note}\n"
             f"https://www.aviasales.com{a['lien']}"
         )

@@ -454,6 +454,7 @@ class TestCorrigerAnomalies(unittest.TestCase):
             "hub": hub, "ville_depart": ville,
             "prix_actuel": prix, "moyenne_historique": moyenne,
             "ecart_type": 50.0, "z_score": 1.8, "baisse_pct": baisse,
+            "economie": moyenne - prix,
             "methode": "z-score", "nb_releves_historique": 6,
             "date_depart": "2026-09-05T10:00:00+00:00", "lien": "/search/x",
         }
@@ -529,6 +530,19 @@ class TestCorrigerAnomalies(unittest.TestCase):
         self.assertEqual(corrigees[0]["baisse_pct"], 8.0)
         self.assertEqual(corrigees[1]["baisse_pct"], 7.5)
 
+    def test_l_economie_en_euros_est_invariante_au_rabattement(self):
+        """Decaler prix ET moyenne du meme montant laisse l'ecart absolu
+        intact : c'est la propriete qui permet au message de justifier
+        l'alerte en euros, un chiffre que le rabattement ne deforme pas --
+        contrairement au pourcentage."""
+        mesures = {("Dakar", "Abidjan"): {"prix": 1200, "table": 200,
+                                          "mesure": True}}
+
+        [a] = hub_deals_db.corriger_anomalies([self._anomalie()], mesures)
+
+        self.assertEqual(a["economie"], 90.0)
+        self.assertLess(a["baisse_pct"], 10.0)  # le pourcentage, lui, bouge
+
     def test_ne_modifie_pas_les_anomalies_d_origine(self):
         """La fonction rend de nouveaux dictionnaires : muter l'entree
         rendrait le diagnostic incoherent avec ce que la base contient."""
@@ -590,6 +604,38 @@ class TestNotificationAvecRabattementMesure(unittest.TestCase):
         self.assertIn("Rabattement mesure ce jour", self.envois[0])
         self.assertIn("409", self.envois[0])
         self.assertIn("1019", self.envois[0])   # 810 + 209
+
+    def test_le_message_affiche_l_economie_en_euros(self):
+        """Le pourcentage affiche est calcule sur l'echelle decalee par le
+        rabattement : il peut passer sous le plancher de detection sans que
+        l'affaire ait change. L'economie en euros, elle, ne bouge pas -- le
+        message doit la porter."""
+        hub_deals_db.mesurer_rabattements = lambda couples, **kw: {
+            ("Dakar", "Abidjan"): {"prix": 409, "table": 200, "mesure": True}}
+
+        hub_deals_db.verifier_et_notifier_anomalies(
+            self.conn, "2026-08-13 10:00:00")
+
+        self.assertIn("Economie : 90", self.envois[0])
+
+    def test_une_alerte_dont_le_pourcentage_tombe_sous_le_plancher_est_conservee(self):
+        """Decision de conception (2026-09-12) : on NE refiltre PAS sur le
+        pourcentage corrige. Le rabattement n'est mesure que pour les routes
+        deja detectees, donc un refiltrage ne pourrait qu'en retirer, jamais
+        en rattraper -- il serait unilateral. Ici un rabattement mesure tres
+        au-dessus de la table fait tomber le pourcentage a 4,7 %, sous le
+        plancher de 6 % : l'alerte doit partir quand meme, justifiee par ses
+        90 EUR d'economie."""
+        hub_deals_db.mesurer_rabattements = lambda couples, **kw: {
+            ("Dakar", "Abidjan"): {"prix": 1200, "table": 200, "mesure": True}}
+
+        hub_deals_db.verifier_et_notifier_anomalies(
+            self.conn, "2026-08-13 10:00:00")
+
+        self.assertEqual(len(self.envois), 1)
+        self.assertIn("Nairobi", self.envois[0])
+        self.assertIn("Economie : 90", self.envois[0])
+        self.assertIn("-5%", self.envois[0])  # 90 / 1900, arrondi
 
     def test_le_message_signale_un_rabattement_non_mesure(self):
         hub_deals_db.mesurer_rabattements = lambda couples, **kw: {

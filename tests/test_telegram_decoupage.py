@@ -34,6 +34,7 @@ def _anomalie(dest):
         "prix_actuel": 900.0,
         "moyenne_historique": 1000.0,
         "baisse_pct": 10.0,
+        "economie": 100.0,
         "rabattement_mesure": None,
         "lien": "/search/IST3110XXX1",
     }
