@@ -556,6 +556,134 @@ class TestCorrigerAnomalies(unittest.TestCase):
         self.assertNotIn("rabattement_mesure", origine)
 
 
+class TestGrouperAnomalies(unittest.TestCase):
+    """Une bonne affaire se joue sur le troncon hub -> destination. La ville
+    de depart n'ajoute qu'un rabattement constant, donc la meme aubaine
+    remonte autant de fois qu'il y a de villes rattachees au hub -- avec la
+    meme economie a l'euro pres. Mesure du 2026-09-12 : 241 alertes sur les
+    15 derniers releves ne recouvrent que 62 affaires distinctes."""
+
+    def _a(self, ville, dest="Rome", hub="Abidjan", prix=1000.0,
+           economie=444.0, lien="/search/ABJ0511ROM1", baisse=30.0):
+        return {
+            "destination": dest, "destination_code": dest[:3].upper(),
+            "hub": hub, "ville_depart": ville, "prix_actuel": prix,
+            "moyenne_historique": prix + economie, "baisse_pct": baisse,
+            "economie": economie, "rabattement_mesure": None, "lien": lien,
+        }
+
+    def test_regroupe_les_villes_partageant_hub_destination_et_lien(self):
+        groupes = hub_deals_db.grouper_anomalies([
+            self._a("Dakar", prix=975), self._a("Lome", prix=1000),
+            self._a("Kinshasa", prix=1362)])
+
+        self.assertEqual(len(groupes), 1)
+        self.assertEqual([a["ville_depart"] for a in groupes[0]],
+                         ["Dakar", "Lome", "Kinshasa"])
+
+    def test_ne_regroupe_pas_deux_liens_differents(self):
+        """Le lien encode la date de depart : deux liens distincts sont deux
+        affaires distinctes, meme sur le meme couple hub/destination."""
+        groupes = hub_deals_db.grouper_anomalies([
+            self._a("Dakar", lien="/search/ABJ0511ROM1"),
+            self._a("Dakar", lien="/search/ABJ1211ROM1")])
+
+        self.assertEqual(len(groupes), 2)
+
+    def test_trie_les_villes_par_prix_croissant(self):
+        groupes = hub_deals_db.grouper_anomalies([
+            self._a("Kinshasa", prix=1362), self._a("Dakar", prix=975),
+            self._a("Lome", prix=1000)])
+
+        self.assertEqual([a["ville_depart"] for a in groupes[0]],
+                         ["Dakar", "Lome", "Kinshasa"])
+
+    def test_trie_les_groupes_par_economie_decroissante(self):
+        groupes = hub_deals_db.grouper_anomalies([
+            self._a("Dakar", dest="Pekin", economie=106.0, lien="/p"),
+            self._a("Dakar", dest="Rome", economie=444.0, lien="/r"),
+            self._a("Dakar", dest="Paris", economie=141.0, lien="/pa")])
+
+        self.assertEqual([g[0]["destination"] for g in groupes],
+                         ["Rome", "Paris", "Pekin"])
+
+    def test_classe_un_groupe_sur_son_economie_la_plus_basse(self):
+        """Les economies d'un groupe different de quelques centimes (les
+        historiques n'ont pas tous la meme longueur). On classe et on annonce
+        sur la plus basse : une annonce prudente ne survend pas l'affaire."""
+        groupes = hub_deals_db.grouper_anomalies([
+            self._a("Dakar", dest="Paris", economie=141.0, lien="/pa"),
+            self._a("Lome", dest="Paris", economie=140.4, lien="/pa"),
+            self._a("Dakar", dest="Pekin", economie=140.7, lien="/pe")])
+
+        self.assertEqual([g[0]["destination"] for g in groupes],
+                         ["Pekin", "Paris"])
+
+
+class TestBlocDAlerte(unittest.TestCase):
+    def _a(self, ville, prix, baisse, economie=444.0, mesure=None):
+        return {
+            "destination": "Rome", "destination_code": "ROM",
+            "hub": "Abidjan", "ville_depart": ville, "prix_actuel": prix,
+            "moyenne_historique": prix + economie, "baisse_pct": baisse,
+            "economie": economie, "rabattement_mesure": mesure,
+            "lien": "/search/ABJ0511ROM1",
+        }
+
+    def test_le_groupe_annonce_l_economie_une_seule_fois(self):
+        bloc = hub_deals_db.construire_bloc([
+            self._a("Dakar", 975, 31.3), self._a("Lome", 1000, 30.8)])
+
+        self.assertEqual(bloc.count("economie"), 1)
+        self.assertIn("<b>Rome</b> (depuis Abidjan) - economie 444", bloc)
+
+    def test_le_groupe_liste_chaque_ville_avec_son_pourcentage(self):
+        """Le pourcentage reste propre a la ville : son denominateur change
+        avec le rabattement, l'economie non."""
+        bloc = hub_deals_db.construire_bloc([
+            self._a("Dakar", 975, 31.3), self._a("Kinshasa", 1362, 24.6)])
+
+        self.assertIn("Dakar 975€ (-31%)", bloc)
+        self.assertIn("Kinshasa 1362€ (-25%)", bloc)
+
+    def test_le_groupe_annonce_l_economie_la_plus_basse(self):
+        bloc = hub_deals_db.construire_bloc([
+            self._a("Lome", 812, 14.8, economie=141.0),
+            self._a("Dakar", 949, 12.9, economie=140.4)])
+
+        self.assertIn("economie 140€", bloc)
+
+    def test_chaque_ville_dit_si_son_rabattement_est_mesure(self):
+        """Statut affiche ligne par ligne plutot qu'en note de bas de bloc :
+        plusieurs villes d'un meme groupe peuvent etre mesurees, avec des
+        valeurs differentes."""
+        bloc = hub_deals_db.construire_bloc([
+            self._a("Dakar", 975, 31.3, mesure=418),
+            self._a("Lome", 1000, 30.8)])
+
+        self.assertIn("Dakar 975€ (-31%) - rabattement mesure 418€", bloc)
+        self.assertIn("Lome 1000€ (-31%) - rabattement estime", bloc)
+
+    def test_le_lien_n_apparait_qu_une_fois(self):
+        bloc = hub_deals_db.construire_bloc([
+            self._a("Dakar", 975, 31.3), self._a("Lome", 1000, 30.8),
+            self._a("Kinshasa", 1362, 24.6)])
+
+        self.assertEqual(bloc.count("aviasales.com"), 1)
+
+    def test_une_seule_ville_retombe_sur_le_format_plat(self):
+        """Jamais observe en 15 releves (0 groupe sur 62), mais possible :
+        une ville dont l'historique est plus court peut rester seule. L'entete
+        de groupe et la liste ne mettraient alors rien en facteur commun."""
+        bloc = hub_deals_db.construire_bloc([self._a("Dakar", 975, 31.3, mesure=418)])
+
+        self.assertIn("(depuis Abidjan, au depart de Dakar)", bloc)
+        self.assertIn("moyenne habituelle", bloc)
+        self.assertIn("Economie : 444", bloc)
+        self.assertIn("Rabattement mesure ce jour : 418", bloc)
+        self.assertNotIn("- economie", bloc)
+
+
 class TestNotificationAvecRabattementMesure(unittest.TestCase):
     """envoyer_telegram est remplace par un espion : aucun envoi reel."""
 

@@ -4,6 +4,27 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Pro
 
 ## 2026-09-12
 
+### Ajouté
+- **Les alertes sont regroupées par affaire réelle (hub → destination), plus une par ville de
+  départ.** La bonne affaire se joue sur le tronçon hub → destination ; la ville de départ n'ajoute
+  qu'un rabattement constant, si bien que la même aubaine remontait autant de fois qu'il y a de
+  villes rattachées au hub, avec une **économie identique à l'euro près**. Mesuré sur les 15 derniers
+  relevés : **241 alertes ne recouvraient que 62 affaires distinctes**, et 28 de ces 62 remontaient
+  avec les 5 villes au complet. Le relevé du 2026-09-12 à 10h43 envoyait 10 alertes pour 3 affaires.
+- La clé de regroupement inclut le lien, qui **encode déjà la date de départ** : deux dates sont deux
+  affaires, même sur le même couple hub/destination.
+- Format : l'économie passe en en-tête de groupe (elle est commune et c'est le critère de
+  déclenchement), le pourcentage reste par ville (son dénominateur change avec le rabattement), le
+  lien n'apparaît qu'une fois. Les groupes sont triés par économie décroissante, les villes par prix
+  croissant. Quand les économies d'un groupe diffèrent de quelques centimes — les historiques n'ont
+  pas tous la même longueur selon la ville — c'est **la plus basse** qui est annoncée.
+- **Le statut du rabattement est affiché ligne par ligne**, et non en note de bas de bloc : plusieurs
+  villes d'un même groupe peuvent être mesurées avec des valeurs différentes, ce qu'une note unique
+  ne saurait porter.
+- **Repli sur le format plat pour un groupe d'une seule ville** : un en-tête de groupe et une liste
+  d'une ligne ne mettraient rien en facteur commun. Cas jamais observé (0 groupe sur 62 en 15
+  relevés) mais couvert par un test dédié.
+
 ### Corrigé
 - **Le message d'alerte affiche désormais l'économie en euros, et n'est plus justifié par le seul
   pourcentage.** `corriger_anomalies()` recalcule le pourcentage sur l'échelle décalée par le
