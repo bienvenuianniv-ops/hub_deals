@@ -2,6 +2,27 @@
 
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Projet personnel sans versionnage sémantique — entrées datées.
 
+## 2026-09-12
+
+### Modifié
+- **Recalibrage du détecteur : `z ≥ 2`, plancher de baisse à 6 %, et une économie minimale de
+  80 €.** Le relevé du matin avait encore remonté 66 alertes. Mesuré sur les 15 derniers relevés,
+  l'ancien réglage (`z ≥ 1,5`, plancher 3 %) en produisait **79 par relevé en médiane, jusqu'à
+  112**, d'une économie médiane de **64 €** — du bruit de marché présenté comme de bonnes affaires.
+  La cause tient en un chiffre : les routes suivies sont très stables, **coefficient de variation
+  médian de 2,8 %**, si bien que 1,5 écart-type ne pesait qu'environ **4 % de baisse**. Le plancher
+  à 3 % ne filtrait donc plus rien — il avait été fixé quand le parc était encore majoritairement
+  jugé au pourcentage (voir l'entrée du 2026-08-20).
+- **Le nouveau réglage donne 16 alertes par relevé en médiane (8 à 26), d'une économie médiane de
+  146 €**, mesuré par backtest causal : la référence de chaque relevé n'utilise que les relevés
+  *antérieurs*, donc exactement ce dont disposait le détecteur ce jour-là.
+- **Monter le z-score seul ne suffisait pas — et dégradait la qualité.** À `z ≥ 2,5` sans toucher au
+  plancher, le volume tombait de moitié (32 par relevé) mais l'économie médiane **baissait à 54 €** :
+  on retenait des baisses statistiquement rares sur des routes ultra-stables, donc de tout petits
+  montants. Ce sont le plancher en pourcentage et le seuil en euros qui portent la qualité, pas le
+  z-score. `ECONOMIE_MINIMALE` est le critère le plus discriminant : à volume égal, passer de 50 €
+  à 80 € fait monter l'économie médiane de 104 € à 146 €.
+
 ## 2026-09-11
 
 ### Corrigé

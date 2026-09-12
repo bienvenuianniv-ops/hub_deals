@@ -26,7 +26,11 @@ Deux règles, selon la profondeur d'historique disponible :
 |---|---|---|
 | < 2 relevés antérieurs | *aucune* | la route n'est pas jugée |
 | 2 ou 3 relevés, ou aucune dispersion | pourcentage | baisse ≥ 8 % sous la moyenne |
-| ≥ 4 relevés, avec dispersion | z-score | prix ≥ 1,5 écart-type sous la moyenne **et** baisse ≥ 3 % |
+| ≥ 4 relevés, avec dispersion | z-score | prix ≥ 2 écarts-types sous la moyenne **et** baisse ≥ 6 % |
+
+Un critère s'ajoute aux deux méthodes : la baisse doit représenter au moins **80 €** d'économie
+(`ECONOMIE_MINIMALE`). C'est le seul seuil aveugle au prix du billet, et c'est voulu — il rattrape
+les routes bon marché, où un joli pourcentage ne pèse que quelques dizaines d'euros.
 
 Le minimum de deux relevés antérieurs (`MIN_RELEVES_HISTORIQUE`) évite de comparer le prix du jour à une observation unique : un billet d'avion bouge assez d'un jour à l'autre pour qu'une telle « référence » ne signale que du bruit.
 

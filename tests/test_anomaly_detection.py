@@ -196,7 +196,10 @@ class TestDetecterAnomalies(unittest.TestCase):
         self.assertEqual(len(diagnostic), 1)
 
     def test_tri_par_baisse_decroissante(self):
-        for dest, prix_final in [("SID", 550), ("LIS", 300)]:
+        # les deux baisses doivent rester au-dessus des seuils de detection
+        # (>= 6% ET >= ECONOMIE_MINIMALE euros) : ce test porte sur l'ordre,
+        # pas sur le declenchement
+        for dest, prix_final in [("SID", 500), ("LIS", 300)]:
             _inserer_offre(self.conn, "Dakar", "Casablanca", dest, dest, 600, "2026-08-01 10:00:00")
             _inserer_offre(self.conn, "Dakar", "Casablanca", dest, dest, 600, "2026-08-02 10:00:00")
             _inserer_offre(self.conn, "Dakar", "Casablanca", dest, dest, prix_final, "2026-08-03 10:00:00")
@@ -204,6 +207,101 @@ class TestDetecterAnomalies(unittest.TestCase):
         anomalies = anomaly_detection.detecter_anomalies(self.conn, date_collecte="2026-08-03 10:00:00")
 
         self.assertEqual([a["destination_code"] for a in anomalies], ["LIS", "SID"])
+
+
+class TestSeuilsStricts(unittest.TestCase):
+    """Recalibrage du 2026-09-12.
+
+    Le detecteur remontait 79 alertes par releve en mediane (jusqu'a 112),
+    d'une economie mediane de 64 EUR : du bruit quotidien habille en bonne
+    affaire. La cause : les routes suivies sont tres stables (coefficient
+    de variation median 2,8%), donc 1,5 ecart-type ne pesait qu'environ
+    4% de baisse -- le plancher a 3% ne filtrait plus rien.
+
+    Trois criteres cumulatifs remplacent ce reglage : z >= 2, baisse >= 6%,
+    et une economie d'au moins ECONOMIE_MINIMALE euros. Chaque test
+    ci-dessous isole un seul critere, les deux autres etant satisfaits.
+    """
+
+    def setUp(self):
+        self.conn = sqlite3.connect(":memory:")
+        hub_deals_db.init_db(self.conn)
+
+    def tearDown(self):
+        self.conn.close()
+
+    def test_une_baisse_sous_le_plancher_ne_declenche_pas(self):
+        """Route tres stable : le z-score s'envole (21) et l'economie est
+        large (150 EUR), mais la baisse de 5% reste sous le plancher."""
+        for i, prix in enumerate([3000, 3000, 3010, 2990, 3000], start=1):
+            _inserer_offre(self.conn, "Dakar", "Casablanca", "SID", "Sal",
+                           prix, f"2026-08-0{i} 10:00:00")
+        _inserer_offre(self.conn, "Dakar", "Casablanca", "SID", "Sal", 2850,
+                       "2026-08-06 10:00:00")  # -5.0%, 150 EUR
+
+        anomalies = anomaly_detection.detecter_anomalies(
+            self.conn, date_collecte="2026-08-06 10:00:00")
+
+        self.assertEqual(anomalies, [])
+
+    def test_un_z_score_entre_1_5_et_2_ne_declenche_plus(self):
+        """Route volatile : baisse de 9% et 90 EUR d'economie, mais le prix
+        n'est qu'a 1,56 ecart-type sous la moyenne -- sous le nouveau seuil."""
+        for i, prix in enumerate([950, 1050, 950, 1050], start=1):
+            _inserer_offre(self.conn, "Lome", "Le Caire", "DKR", "Dakar",
+                           prix, f"2026-08-0{i} 10:00:00")
+        _inserer_offre(self.conn, "Lome", "Le Caire", "DKR", "Dakar", 910,
+                       "2026-08-05 10:00:00")  # -9%, 90 EUR, z = 1.56
+
+        anomalies = anomaly_detection.detecter_anomalies(
+            self.conn, date_collecte="2026-08-05 10:00:00")
+
+        self.assertEqual(anomalies, [])
+
+    def test_une_economie_trop_faible_ne_declenche_pas(self):
+        """Route bon marche : -12% et z de 14, mais 60 EUR gagnes ne valent
+        pas une notification."""
+        for i, prix in enumerate([500, 500, 505, 495], start=1):
+            _inserer_offre(self.conn, "Abidjan", "Istanbul", "CAI", "Le Caire",
+                           prix, f"2026-08-0{i} 10:00:00")
+        _inserer_offre(self.conn, "Abidjan", "Istanbul", "CAI", "Le Caire", 440,
+                       "2026-08-05 10:00:00")  # -12%, 60 EUR
+
+        anomalies = anomaly_detection.detecter_anomalies(
+            self.conn, date_collecte="2026-08-05 10:00:00")
+
+        self.assertEqual(anomalies, [])
+
+    def test_le_mode_pourcentage_applique_aussi_l_economie_minimale(self):
+        """Le garde-fou en euros ne doit pas dependre de la methode : sur un
+        historique court, une baisse de 12% a 60 EUR ne passe pas non plus."""
+        _inserer_offre(self.conn, "Brazzaville", "Nairobi", "LIS", "Lisbonne",
+                       500, "2026-08-01 10:00:00")
+        _inserer_offre(self.conn, "Brazzaville", "Nairobi", "LIS", "Lisbonne",
+                       500, "2026-08-02 10:00:00")
+        _inserer_offre(self.conn, "Brazzaville", "Nairobi", "LIS", "Lisbonne",
+                       440, "2026-08-03 10:00:00")  # -12%, 60 EUR
+
+        anomalies = anomaly_detection.detecter_anomalies(
+            self.conn, date_collecte="2026-08-03 10:00:00")
+
+        self.assertEqual(anomalies, [])
+
+    def test_une_vraie_bonne_affaire_passe_les_trois_criteres(self):
+        """Garde-fou inverse : un reglage trop strict ne doit pas etouffer
+        les alertes qui valent le deplacement."""
+        for i, prix in enumerate([1000, 1000, 1010, 990], start=1):
+            _inserer_offre(self.conn, "Kinshasa", "Casablanca", "BRU", "Bruxelles",
+                           prix, f"2026-08-0{i} 10:00:00")
+        _inserer_offre(self.conn, "Kinshasa", "Casablanca", "BRU", "Bruxelles", 880,
+                       "2026-08-05 10:00:00")  # -12%, 120 EUR, z = 14.7
+
+        anomalies = anomaly_detection.detecter_anomalies(
+            self.conn, date_collecte="2026-08-05 10:00:00")
+
+        self.assertEqual(len(anomalies), 1)
+        self.assertEqual(anomalies[0]["baisse_pct"], 12.0)
+        self.assertEqual(anomalies[0]["destination_code"], "BRU")
 
 
 if __name__ == "__main__":
