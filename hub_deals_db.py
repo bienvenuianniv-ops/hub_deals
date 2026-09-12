@@ -676,6 +676,89 @@ def sauvegarder_et_alerter(conn: sqlite3.Connection,
     return ok
 
 
+def grouper_anomalies(anomalies: list) -> list:
+    """
+    Regroupe les anomalies par affaire reelle : le troncon hub -> destination.
+
+    Une bonne affaire se joue sur ce troncon. La ville de depart n'ajoute
+    qu'un rabattement constant, si bien que la meme aubaine remontait
+    autant de fois qu'il y a de villes rattachees au hub, avec une economie
+    identique a l'euro pres. Mesure du 2026-09-12 : sur les 15 derniers
+    releves, 241 alertes ne recouvraient que 62 affaires distinctes, et 28
+    de ces 62 remontaient avec les 5 villes au complet.
+
+    La cle inclut le lien, qui encode deja la date de depart : deux dates
+    sont deux affaires, meme sur le meme couple hub/destination.
+
+    Villes triees par prix croissant, groupes par economie decroissante.
+    Les economies d'un meme groupe peuvent differer de quelques centimes
+    (les historiques n'ont pas tous la meme longueur selon la ville) : c'est
+    la PLUS BASSE qui classe le groupe, pour ne pas survendre l'affaire.
+    """
+    groupes = {}
+    for a in anomalies:
+        cle = (a["hub"], a["destination"], a["lien"])
+        groupes.setdefault(cle, []).append(a)
+
+    for membres in groupes.values():
+        membres.sort(key=lambda a: a["prix_actuel"])
+
+    return sorted(groupes.values(),
+                  key=lambda g: min(a["economie"] for a in g),
+                  reverse=True)
+
+
+def construire_bloc(groupe: list) -> str:
+    """
+    Rend un groupe d'anomalies en un bloc de message Telegram.
+
+    A plusieurs villes, l'economie passe en entete : elle est commune au
+    groupe et c'est le critere de declenchement. Le pourcentage reste sur
+    chaque ligne de ville -- son denominateur change avec le rabattement,
+    contrairement a l'economie.
+
+    Le statut du rabattement est donne ligne par ligne plutot qu'en note de
+    bas de bloc : plusieurs villes d'un meme groupe peuvent etre mesurees,
+    avec des valeurs differentes, ce qu'une note unique ne saurait porter.
+
+    A une seule ville, on retombe sur le format plat : un entete de groupe
+    et une liste d'une ligne ne mettraient rien en facteur commun. Le cas
+    n'a jamais ete observe (0 groupe sur 62 en 15 releves) mais reste
+    possible -- une ville a l'historique plus court peut rester seule.
+    """
+    premier = groupe[0]
+    lien = f"https://www.aviasales.com{premier['lien']}"
+
+    if len(groupe) == 1:
+        a = premier
+        if a["rabattement_mesure"] is not None:
+            note = f"Rabattement mesure ce jour : {a['rabattement_mesure']:.0f}\u20ac"
+        else:
+            note = "Rabattement estime, non mesure ce jour"
+        return (
+            f"\n<b>{a['destination']}</b> (depuis {a['hub']}, "
+            f"au depart de {a['ville_depart']})\n"
+            f"{a['prix_actuel']:.0f}\u20ac (moyenne habituelle : "
+            f"{a['moyenne_historique']:.0f}\u20ac, -{a['baisse_pct']:.0f}%)\n"
+            f"Economie : {a['economie']:.0f}\u20ac\n"
+            f"{note}\n"
+            f"{lien}"
+        )
+
+    economie = min(a["economie"] for a in groupe)
+    lignes = [f"\n<b>{premier['destination']}</b> (depuis {premier['hub']}) "
+              f"- economie {economie:.0f}\u20ac"]
+    for a in groupe:
+        if a["rabattement_mesure"] is not None:
+            etat = f"rabattement mesure {a['rabattement_mesure']:.0f}\u20ac"
+        else:
+            etat = "rabattement estime"
+        lignes.append(f"{a['ville_depart']} {a['prix_actuel']:.0f}\u20ac "
+                      f"(-{a['baisse_pct']:.0f}%) - {etat}")
+    lignes.append(lien)
+    return "\n".join(lignes)
+
+
 def verifier_et_notifier_anomalies(conn: sqlite3.Connection, date_collecte: str) -> None:
     """Compare le releve du jour a la moyenne historique de chaque
     destination (logique centralisee dans anomaly_detection.py), et
@@ -701,21 +784,11 @@ def verifier_et_notifier_anomalies(conn: sqlite3.Connection, date_collecte: str)
     nb_mesures = sum(1 for a in anomalies if a["rabattement_mesure"] is not None)
     log(f"Rabattement mesure pour {nb_mesures}/{len(anomalies)} anomalie(s).")
 
-    entete = f"<b>{len(anomalies)} bonne(s) affaire(s) detectee(s) !</b>"
-    blocs = []
-    for a in anomalies:
-        if a["rabattement_mesure"] is not None:
-            note = f"Rabattement mesure ce jour : {a['rabattement_mesure']:.0f}\u20ac"
-        else:
-            note = "Rabattement estime, non mesure ce jour"
-        blocs.append(
-            f"\n<b>{a['destination']}</b> (depuis {a['hub']}, au depart de {a['ville_depart']})\n"
-            f"{a['prix_actuel']:.0f}\u20ac (moyenne habituelle : {a['moyenne_historique']:.0f}\u20ac, "
-            f"-{a['baisse_pct']:.0f}%)\n"
-            f"Economie : {a['economie']:.0f}€\n"
-            f"{note}\n"
-            f"https://www.aviasales.com{a['lien']}"
-        )
+    groupes = grouper_anomalies(anomalies)
+    log(f"{len(anomalies)} anomalie(s) regroupee(s) en {len(groupes)} affaire(s).")
+
+    entete = f"<b>{len(groupes)} bonne(s) affaire(s) detectee(s) !</b>"
+    blocs = [construire_bloc(g) for g in groupes]
 
     morceaux = decouper_message(blocs, entete)
     partis = sum(1 for m in morceaux if envoyer_telegram(m))
