@@ -653,10 +653,11 @@ def sauvegarder_et_alerter(conn: sqlite3.Connection,
 
     Ne leve jamais : le releve est deja enregistre a ce stade.
     """
-    if sauver is None:
-        from sauvegarde import sauvegarder_distant as sauver
-
     try:
+        # import DANS le try : un sauvegarde.py absent ou casse doit
+        # declencher l'alerte, pas faire planter la fin du releve
+        if sauver is None:
+            from sauvegarde import sauvegarder_distant as sauver
         ok = sauver(conn, dossier, journaliser=log)
     except Exception as e:
         log(f"   -> sauvegarde distante impossible : {e}")

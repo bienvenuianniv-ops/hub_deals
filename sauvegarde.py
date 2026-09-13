@@ -31,6 +31,7 @@ from datetime import datetime, timezone
 NOM_DUMP = "flight_deals.sql"
 BRANCHE = "sauvegardes"
 COPIES_LOCALES_GARDEES = 5
+DELAI_COMMANDE = 300   # secondes ; un push de sauvegarde en prend quelques-unes
 
 
 def generer_dump(conn: sqlite3.Connection) -> str:
@@ -74,10 +75,41 @@ def sauvegarder_local(db_path: str, garder: int = COPIES_LOCALES_GARDEES,
     return destination
 
 
-def _executer(args, cwd=None):
-    """Lance une commande et rend (code de retour, sortie)."""
-    r = subprocess.run(args, cwd=cwd, capture_output=True, text=True)
-    return r.returncode, (r.stdout or "") + (r.stderr or "")
+def _executer(args, cwd=None, delai=DELAI_COMMANDE):
+    """Lance une commande et rend (code de retour, sortie). Ne bloque jamais.
+
+    La tache planifiee tourne sans personne devant l'ecran. Sans identifiant
+    valide, `git push` ouvrait le gestionnaire d'identifiants et attendait
+    une saisie indefiniment (reproduit le 2026-09-13) : le releve ne finissait
+    jamais, l'alerte ne partait pas, et la tache refusait de se relancer.
+    D'ou trois parades :
+
+      - saisie interdite (GIT_TERMINAL_PROMPT, GCM_INTERACTIVE) : git echoue
+        tout de suite, avec un message explicite ;
+      - delai maximal, en dernier recours. On tue alors tout l'ARBRE de
+        processus : le gestionnaire d'identifiants herite des tubes de
+        sortie, et tant qu'il vit, lire la sortie de git bloque aussi ;
+      - sortie decodee en UTF-8 (celui de git) et non en cp1252, qui
+        affichait n'importe quoi, voire perdait toute la sortie.
+    """
+    env = dict(os.environ, GIT_TERMINAL_PROMPT="0", GCM_INTERACTIVE="never")
+    p = subprocess.Popen(args, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
+                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    try:
+        brut, _ = p.communicate(timeout=delai)
+    except subprocess.TimeoutExpired:
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(p.pid)],
+                       capture_output=True)
+        p.kill()
+        return 1, f"delai de {delai} s depasse, commande interrompue : {' '.join(args)}"
+    return p.returncode, brut.decode("utf-8", errors="replace")
+
+
+def _fin(sortie: str, longueur: int = 200) -> str:
+    """Resume une sortie de commande pour le journal, en gardant la FIN :
+    git y met la cause (`fatal: Authentication failed`)."""
+    sortie = " ".join(sortie.split())
+    return sortie if len(sortie) <= longueur else "..." + sortie[-longueur:]
 
 
 def sauvegarder_distant(conn: sqlite3.Connection, dossier: str,
@@ -101,7 +133,7 @@ def sauvegarder_distant(conn: sqlite3.Connection, dossier: str,
 
         code, sortie = executer(["git", "add", NOM_DUMP], cwd=dossier)
         if code != 0:
-            journaliser(f"   -> sauvegarde distante : echec de add ({sortie[:120]})")
+            journaliser(f"   -> sauvegarde distante : echec de add ({_fin(sortie)})")
             return False
 
         # rien de nouveau : ne pas produire un commit vide
@@ -113,12 +145,12 @@ def sauvegarder_distant(conn: sqlite3.Connection, dossier: str,
         message = f"sauvegarde {_horodatage()}"
         code, sortie = executer(["git", "commit", "-m", message], cwd=dossier)
         if code != 0:
-            journaliser(f"   -> sauvegarde distante : echec du commit ({sortie[:120]})")
+            journaliser(f"   -> sauvegarde distante : echec du commit ({_fin(sortie)})")
             return False
 
         code, sortie = executer(["git", "push", "origin", BRANCHE], cwd=dossier)
         if code != 0:
-            journaliser(f"   -> sauvegarde distante : echec du push ({sortie[:120]})")
+            journaliser(f"   -> sauvegarde distante : echec du push ({_fin(sortie)})")
             return False
 
         journaliser("   -> sauvegarde distante poussee")
@@ -155,6 +187,12 @@ def restaurer(chemin_dump: str, chemin_db: str) -> int:
         conn.executescript(dump)
         conn.commit()
         return conn.execute("SELECT COUNT(*) FROM offres").fetchone()[0]
+    except Exception:
+        # connect() a deja cree le fichier : le laisser interdirait de
+        # reessayer sous le meme nom (voir le garde-fou ci-dessus)
+        conn.close()
+        os.remove(chemin_db)
+        raise
     finally:
         conn.close()
 
