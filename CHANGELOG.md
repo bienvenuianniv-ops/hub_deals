@@ -2,6 +2,32 @@
 
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Projet personnel sans versionnage sémantique — entrées datées.
 
+## 2026-09-13
+
+### Corrigé
+- **Un `git push` sans identifiant valide ne peut plus bloquer le relevé indéfiniment.** Reproduit
+  avec l'environnement de la tâche planifiée : le gestionnaire d'identifiants attendait une saisie
+  que personne ne ferait. Le relevé ne se terminait jamais, **l'alerte d'échec ne partait pas** (elle
+  est déclenchée après), et `MultipleInstances = IgnoreNew` faisait sauter les relevés suivants
+  pendant jusqu'à 72 h. `_executer` interdit désormais toute saisie (`GIT_TERMINAL_PROMPT=0`,
+  `GCM_INTERACTIVE=never`) — le même push échoue en 1,2 s avec un message explicite — et impose un
+  délai de 300 s en dernier recours, en tuant **tout l'arbre** de processus : le gestionnaire
+  d'identifiants hérite des tubes de sortie, et tant qu'il vit, lire la sortie de git bloque aussi.
+- **La sortie de git est décodée en UTF-8** et non plus en cp1252, qui produisait du texte illisible
+  et, sur un octet non défini en cp1252, **perdait toute la sortie sans lever d'erreur**. Le journal
+  garde la **fin** de la sortie (où git met la cause, `fatal: Authentication failed`) au lieu des
+  120 premiers caractères.
+- `restaurer()` ne laisse plus de fichier vide après un échec, qui interdisait de réessayer sous le
+  même nom.
+- L'import du module de sauvegarde est passé dans le `try` de `sauvegarder_et_alerter()` : un
+  `sauvegarde.py` absent ou cassé déclenche l'alerte au lieu de faire planter la fin du relevé.
+
+### Écarté après vérification (revue du 2026-08-22)
+- « La purge des copies locales ne tourne jamais » : par conception, la copie locale est un outil
+  manuel, à lancer avant une opération destructive.
+- « `print()` plante sur un stdout cp1252 » : la tâche lance `python.exe` avec une console, dont
+  l'encodage est UTF-8.
+
 ## 2026-09-12
 
 ### Ajouté

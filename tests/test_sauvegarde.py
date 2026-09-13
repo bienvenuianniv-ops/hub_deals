@@ -1,5 +1,6 @@
 import os
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import time
@@ -104,6 +105,20 @@ class TestRestauration(unittest.TestCase):
 
         with self.assertRaises(FileExistsError):
             sauvegarde.restaurer(self.dump, cible)
+
+    def test_un_echec_ne_laisse_pas_de_fichier_derriere_lui(self):
+        """sqlite3.connect cree le fichier avant que le dump n'echoue : sans
+        nettoyage, le garde-fou anti-ecrasement interdit ensuite de
+        reessayer sous le meme nom -- le jour meme de la panne."""
+        casse = os.path.join(self.dossier.name, "casse.sql")
+        with open(casse, "w", encoding="utf-8") as f:
+            f.write("CECI N'EST PAS DU SQL;")
+        cible = os.path.join(self.dossier.name, "restauree.db")
+
+        with self.assertRaises(sqlite3.Error):
+            sauvegarde.restaurer(casse, cible)
+
+        self.assertFalse(os.path.exists(cible))
 
 
 class TestSauvegardeLocale(unittest.TestCase):
@@ -235,6 +250,90 @@ class TestSauvegardeDistante(unittest.TestCase):
         self.assertTrue(ok)
         self.assertNotIn("commit", etats)
         self.assertNotIn("push", etats)
+
+    def test_le_journal_garde_la_fin_de_l_erreur_git(self):
+        """Git met la cause en DERNIER (`fatal: Authentication failed`) ;
+        tronquer par le debut la faisait disparaitre."""
+        journal = []
+
+        def executer(args, cwd=None):
+            if "push" in args:
+                return 128, "remote: " + "x" * 300 + "\nfatal: Authentication failed"
+            return self._code_diff(args), ""
+
+        sauvegarde.sauvegarder_distant(self.conn, dossier=self.dossier.name,
+                                       executer=executer, journaliser=journal.append)
+
+        self.assertIn("Authentication failed", " ".join(journal))
+
+
+def _python(code):
+    """Commande lancant un petit script Python -- un vrai sous-processus,
+    pas une simulation : c'est le comportement du processus qui est teste."""
+    return [sys.executable, "-c", code]
+
+
+class TestExecutionDesCommandes(unittest.TestCase):
+    """_executer lance git depuis la tache planifiee, sans personne devant
+    l'ecran. Reproduit le 2026-09-13 : un `git push` sans identifiant valide
+    attend indefiniment une saisie, le releve ne finit jamais, l'alerte ne
+    part pas et la tache refuse de se relancer pendant 72 h."""
+
+    def test_rend_la_main_meme_si_un_petit_fils_tient_la_sortie(self):
+        """Cas reel : git lance le gestionnaire d'identifiants, qui herite
+        des tubes de sortie. Tuer git seul laisse les tubes ouverts, et la
+        lecture de la sortie bloque a son tour."""
+        with tempfile.TemporaryDirectory() as dossier:
+            fichier_pid = os.path.join(dossier, "pid")
+            code = ("import subprocess, sys, time;"
+                    "p = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'],"
+                    " stdout=sys.stdout, stderr=sys.stderr);"
+                    f"open({fichier_pid!r}, 'w').write(str(p.pid));"
+                    "time.sleep(30)")
+            debut = time.monotonic()
+
+            retour, sortie = sauvegarde._executer(_python(code), delai=1)
+
+            self.assertLess(time.monotonic() - debut, 10)
+            self.assertNotEqual(retour, 0)
+            self.assertIn("delai", sortie)
+            # sinon un gestionnaire d'identifiants orphelin s'ajoute a chaque releve
+            with open(fichier_pid) as f:
+                pid = f.read().strip()
+            liste = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"],
+                                   capture_output=True, text=True).stdout
+            self.assertNotIn(pid, liste.split(), "le petit-fils a survecu")
+
+    def test_git_ne_peut_pas_demander_de_saisie(self):
+        """La session d'outil definit deja ces variables, pas la tache
+        planifiee : on les retire pour tester dans les conditions reelles."""
+        from unittest import mock
+        propre = {k: v for k, v in os.environ.items()
+                  if k not in ("GIT_TERMINAL_PROMPT", "GCM_INTERACTIVE")}
+        code = ("import os;"
+                "print(os.environ.get('GIT_TERMINAL_PROMPT'),"
+                " os.environ.get('GCM_INTERACTIVE'))")
+
+        with mock.patch.dict(os.environ, propre, clear=True):
+            _, sortie = sauvegarde._executer(_python(code))
+
+        self.assertEqual(sortie.split(), ["0", "never"])
+
+    def test_la_sortie_utf8_de_git_est_lisible(self):
+        code = "import sys; sys.stdout.buffer.write('fatal: dépôt'.encode('utf-8'))"
+
+        _, sortie = sauvegarde._executer(_python(code))
+
+        self.assertIn("dépôt", sortie)
+
+    def test_un_octet_invalide_ne_fait_pas_disparaitre_le_diagnostic(self):
+        """En cp1252, 0x81 n'est pas defini : le decodage tuait le fil de
+        lecture sans lever, et la sortie revenait VIDE."""
+        code = "import sys; sys.stdout.buffer.write(bytes([0x81]) + b' Authentication failed')"
+
+        _, sortie = sauvegarde._executer(_python(code))
+
+        self.assertIn("Authentication failed", sortie)
 
 
 if __name__ == "__main__":

@@ -843,6 +843,17 @@ class TestAlerteSauvegarde(unittest.TestCase):
         self.assertFalse(ok)
         self.assertEqual(len(self.envois), 1)
 
+    def test_un_module_de_sauvegarde_inchargeable_est_notifie(self):
+        """Les autres tests injectent `sauver` et ne franchissent donc jamais
+        l'import reel : un sauvegarde.py absent ou casse levait jusqu'au
+        bloc principal, sans alerte."""
+        from unittest import mock
+        with mock.patch.dict(sys.modules, {"sauvegarde": None}):
+            ok = hub_deals_db.sauvegarder_et_alerter(self.conn)
+
+        self.assertFalse(ok)
+        self.assertEqual(len(self.envois), 1)
+
     def test_le_bloc_principal_appelle_le_garde_fou(self):
         import inspect
         bloc = inspect.getsource(hub_deals_db).split(
