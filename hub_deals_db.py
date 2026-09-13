@@ -570,6 +570,19 @@ def log(message: str) -> None:
         f.write(ligne + "\n")
 
 
+def journaliser_plantage(type_exc, valeur, trace) -> None:
+    """Crochet sys.excepthook : ecrit la trace d'un plantage dans le journal.
+
+    La tache tourne sous pythonw.exe, pour qu'aucune fenetre ne s'ouvre (et
+    ne soit fermee par megarde : 4 releves tues ainsi en septembre 2026).
+    Contrepartie : sys.stderr vaut None, et la trace d'une exception non
+    rattrapee ne s'afficherait NULLE PART. Passe par log(), donc masquee.
+    """
+    import traceback
+    log("=== PLANTAGE du releve ===")
+    log("".join(traceback.format_exception(type_exc, valeur, trace)).rstrip())
+
+
 def journaliser_message(message: str, entete: str) -> None:
     """Ecrit dans le journal le message destine a Telegram, encadre par des
     marqueurs.
@@ -846,8 +859,15 @@ def verifier_et_notifier_anomalies(conn: sqlite3.Connection, date_collecte: str)
 
 
 if __name__ == "__main__":
+    import sys
+    # sous pythonw.exe, rien ne s'affiche : tout plantage doit aller au journal
+    sys.excepthook = journaliser_plantage
+
     if not TOKEN:
-        raise SystemExit("Il manque TRAVELPAYOUTS_TOKEN dans l'environnement.")
+        # pas de SystemExit("message") : ce message part sur stderr, qui
+        # n'existe pas sous pythonw, et ne passe pas par excepthook
+        log("ARRET : il manque TRAVELPAYOUTS_TOKEN dans l'environnement.")
+        sys.exit(1)
 
     date_collecte = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     log("=== Debut d'execution ===")
