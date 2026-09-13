@@ -162,6 +162,13 @@ Le déclencheur quotidien a été ajouté le 2026-08-15 : jusque-là la collecte
 
 Les restrictions batterie (`DisallowStartIfOnBatteries`, `StopIfGoingOnBatteries`) ont été levées le même jour : sur ce portable, une session ouverte sur batterie empêchait la tâche de démarrer, et un débranchement en cours de relevé la tuait en laissant des données partielles — sans le moindre avertissement.
 
+La tâche lance **`pythonw.exe`** (et non `python.exe`) depuis le 2026-09-13 : aucune fenêtre ne
+s'ouvre, donc aucune qu'on puisse fermer par mégarde — 4 relevés sur 99 avaient été tués ainsi
+(code de sortie `0xC000013A`). Contrepartie gérée dans le code : sans console, un plantage serait
+invisible, d'où `sys.excepthook` qui écrit toute trace d'exception (masquée) dans
+`flight_deals_log.txt` ; et les commandes git sont lancées avec `CREATE_NO_WINDOW`, sans quoi
+chacune ouvrirait sa propre fenêtre.
+
 > Modifier cette tâche demande une session PowerShell **élevée** (elle réside dans le dossier racine du planificateur) ; `schtasks /Change` fonctionne sans élévation mais n'expose ni les réglages batterie ni l'ajout de déclencheur.
 
 ## Licence

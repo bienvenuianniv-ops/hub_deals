@@ -319,6 +319,31 @@ class TestExecutionDesCommandes(unittest.TestCase):
 
         self.assertEqual(sortie.split(), ["0", "never"])
 
+    def test_la_commande_n_ouvre_aucune_fenetre_console(self):
+        """La tache tourne sous pythonw.exe, sans console : chaque commande
+        console lancee (git) en ouvrirait une a elle, qui clignote a l'ecran
+        -- et qu'on peut fermer, ce qu'on cherche justement a eviter.
+        Reproduit le 2026-09-13 sous pythonw : GetConsoleWindow() non nul.
+
+        Le test doit lui-meme passer par pythonw : lance depuis le processus
+        de test, l'enfant ne recoit pas de fenetre et le test ne prouverait
+        rien (constate : il passait sans le correctif)."""
+        pythonw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
+        if not os.path.exists(pythonw):
+            self.skipTest("pythonw.exe introuvable")
+        racine = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        enfant = "import ctypes; print(ctypes.windll.kernel32.GetConsoleWindow())"
+        with tempfile.TemporaryDirectory() as dossier:
+            resultat = os.path.join(dossier, "resultat.txt")
+            parent = (f"import sys; sys.path.insert(0, {racine!r}); import sauvegarde;"
+                      f"_, s = sauvegarde._executer([{sys.executable!r}, '-c', {enfant!r}]);"
+                      f"open({resultat!r}, 'w').write(s.strip())")
+
+            subprocess.run([pythonw, "-c", parent], timeout=60)
+
+            with open(resultat) as f:
+                self.assertEqual(f.read(), "0")
+
     def test_la_sortie_utf8_de_git_est_lisible(self):
         code = "import sys; sys.stdout.buffer.write('fatal: dépôt'.encode('utf-8'))"
 

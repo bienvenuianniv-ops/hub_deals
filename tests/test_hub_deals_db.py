@@ -939,6 +939,43 @@ class TestAlerteSauvegarde(unittest.TestCase):
         self.assertIn("sauvegarder_et_alerter", bloc)
 
 
+class TestPlantageJournalise(unittest.TestCase):
+    """La tache tourne sous pythonw.exe : sys.stderr vaut None, donc une
+    trace de plantage ou un message de SystemExit ne s'affiche NULLE PART.
+    Sans journalisation, un releve qui plante serait parfaitement muet."""
+
+    def test_la_trace_d_un_plantage_est_journalisee_et_masquee(self):
+        """Vrai log(), vers un journal temporaire : c'est le chemin reel,
+        masquage des secrets compris."""
+        import tempfile
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as dossier:
+            journal_tmp = os.path.join(dossier, "journal.txt")
+            with mock.patch.object(hub_deals_db, "LOG_PATH", journal_tmp), \
+                 mock.patch.object(hub_deals_db, "TOKEN", "secret_tp_123"), \
+                 mock.patch("builtins.print"):
+                try:
+                    raise RuntimeError("echec sur ?token=secret_tp_123")
+                except RuntimeError as e:
+                    hub_deals_db.journaliser_plantage(type(e), e, e.__traceback__)
+
+            with open(journal_tmp, encoding="utf-8") as f:
+                journal = f.read()
+
+        self.assertIn("PLANTAGE", journal)
+        self.assertIn("Traceback", journal)
+        self.assertIn("RuntimeError", journal)
+        self.assertNotIn("secret_tp_123", journal)
+
+    def test_le_bloc_principal_installe_la_journalisation(self):
+        import inspect
+        bloc = inspect.getsource(hub_deals_db).split(
+            'if __name__ == "__main__":')[1]
+        self.assertIn("sys.excepthook = journaliser_plantage", bloc)
+        # SystemExit ne passe pas par excepthook : son message serait perdu
+        self.assertNotIn("raise SystemExit(", bloc)
+
+
 class _FausseReponse:
     def __init__(self, status_code=200, text="{\"ok\":true}"):
         self.status_code = status_code

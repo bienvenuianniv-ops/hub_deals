@@ -91,15 +91,20 @@ def _executer(args, cwd=None, delai=DELAI_COMMANDE):
         sortie, et tant qu'il vit, lire la sortie de git bloque aussi ;
       - sortie decodee en UTF-8 (celui de git) et non en cp1252, qui
         affichait n'importe quoi, voire perdait toute la sortie.
+
+    CREATE_NO_WINDOW : la tache tourne sous pythonw.exe, sans console ;
+    chaque commande console lancee en ouvrirait sinon une a elle.
     """
     env = dict(os.environ, GIT_TERMINAL_PROMPT="0", GCM_INTERACTIVE="never")
     p = subprocess.Popen(args, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
-                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                         creationflags=subprocess.CREATE_NO_WINDOW)
     try:
         brut, _ = p.communicate(timeout=delai)
     except subprocess.TimeoutExpired:
         subprocess.run(["taskkill", "/F", "/T", "/PID", str(p.pid)],
-                       capture_output=True)
+                       capture_output=True,
+                       creationflags=subprocess.CREATE_NO_WINDOW)
         p.kill()
         return 1, f"delai de {delai} s depasse, commande interrompue : {' '.join(args)}"
     return p.returncode, brut.decode("utf-8", errors="replace")
