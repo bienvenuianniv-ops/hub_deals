@@ -5,6 +5,11 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Pro
 ## 2026-09-13
 
 ### Corrigé
+- **`recherche.py` mesure aussi l'aller vers Paris.** Le trajet ville → hub passe par
+  `get_prix_segment()` (v3), le vol direct et le segment hub → destination restent sur v1. Vérifié
+  en réel (`Dakar BKK`) : « via Paris » affiche désormais `486 [API]` au lieu de la valeur estimée ;
+  la base n'est pas modifiée. Une fonction `get_prix` injectée sert toujours pour tous les segments,
+  pour que les tests ne fassent aucun appel réseau.
 - **Le rabattement vers Paris est enfin mesuré au moment de l'alerte.** `mesurer_rabattements()`
   passait par `v1/prices/cheap`, qui ne renvoie rien pour les segments vers CDG : dans le journal,
   Dakar→Paris n'avait été mesuré **aucun jour sur 22**. La mesure passe désormais par

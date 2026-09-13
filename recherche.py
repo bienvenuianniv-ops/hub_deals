@@ -90,11 +90,16 @@ def chercher_itineraires(ville, dest, get_prix=None, pause=True):
     Renvoie (options, erreurs). Le vol direct figure dans le meme
     classement que les trajets via hub.
 
-    get_prix est injectable pour les tests ; par defaut on interroge
-    reellement l'API via le collecteur.
+    get_prix est injectable pour les tests, et sert alors pour TOUS les
+    segments. Par defaut on interroge reellement l'API via le collecteur :
+    v3 pour les trajets ville -> hub (v1 ne renvoie rien vers Paris, voir
+    collecteur.get_prix_segment), v1 pour le reste.
     """
     if get_prix is None:
         get_prix = collecteur.get_prix_route
+        get_prix_aller = collecteur.get_prix_segment
+    else:
+        get_prix_aller = get_prix
 
     origine = collecteur.VILLE_IATA[ville]
     if dest == origine:
@@ -126,7 +131,7 @@ def chercher_itineraires(ville, dest, get_prix=None, pause=True):
         if hub == dest:
             continue  # aller a X via X, c'est le vol direct deja traite
 
-        offre_aller = _appeler(get_prix, origine, hub, erreurs, pause)
+        offre_aller = _appeler(get_prix_aller, origine, hub, erreurs, pause)
         if offre_aller.get("price"):
             prix_aller = offre_aller["price"]
             aller_estime = False
