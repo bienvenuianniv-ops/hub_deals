@@ -5,6 +5,18 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Pro
 ## 2026-09-13
 
 ### Corrigé
+- **Le rabattement vers Paris est enfin mesuré au moment de l'alerte.** `mesurer_rabattements()`
+  passait par `v1/prices/cheap`, qui ne renvoie rien pour les segments vers CDG : dans le journal,
+  Dakar→Paris n'avait été mesuré **aucun jour sur 22**. La mesure passe désormais par
+  `v3/prices_for_dates` en aller-retour (`get_prix_segment()`). Sonde du jour sur les 40 segments,
+  avec témoins positif et négatif : v1 en couvre 17, **v3 21 — les mêmes 17 au même prix, plus 4
+  vers Paris**. Vérifié avec la vraie fonction contre l'API : 21/40, aucune erreur.
+- Diagnostic du « Rabattement mesuré pour 1/10 » du 2026-09-12 : **pas une régression**. Sur tout
+  l'historique, ~52 % des blocs sont mesurés ; ce relevé ne portait que sur des affaires via Lagos,
+  dont aucun segment n'a de prix. La couverture de l'API **varie d'un jour à l'autre** (Lomé→Istanbul
+  mesurable depuis le 29/08, Lomé→Nairobi plus depuis le 23/08) : les marques `[M]`/`[NM]` de la
+  table sont un instantané du 2026-08-16.
+
 - **Un `git push` sans identifiant valide ne peut plus bloquer le relevé indéfiniment.** Reproduit
   avec l'environnement de la tâche planifiée : le gestionnaire d'identifiants attendait une saisie
   que personne ne ferait. Le relevé ne se terminait jamais, **l'alerte d'échec ne partait pas** (elle

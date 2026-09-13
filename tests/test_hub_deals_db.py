@@ -347,6 +347,65 @@ class TestDestinationsActives(unittest.TestCase):
         self.assertEqual(noms, ["Dakar"])
 
 
+class _ReponseV3:
+    def __init__(self, data, status_code=200):
+        self.data = data
+        self.status_code = status_code
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise requests.exceptions.HTTPError(f"HTTP {self.status_code}")
+
+    def json(self):
+        return {"success": self.status_code < 400, "data": self.data}
+
+
+class TestPrixSegment(unittest.TestCase):
+    """get_prix_segment interroge v3/prices_for_dates. requests.get est
+    remplace le temps de chaque test : aucun appel reseau."""
+
+    def _appeler(self, reponse, origine="DKR", destination="CDG"):
+        from unittest import mock
+        appels = []
+
+        def faux_get(url, params=None, timeout=None):
+            appels.append((url, params, timeout))
+            return reponse
+
+        with mock.patch.object(hub_deals_db.requests, "get", faux_get):
+            resultat = hub_deals_db.get_prix_segment(origine, destination)
+        return resultat, appels
+
+    def test_interroge_v3_en_aller_retour(self):
+        """PIEGE : laisse a true, one_way renvoie des allers simples ~43 %
+        moins chers, incomparables aux rabattements de la table (AR)."""
+        _, appels = self._appeler(_ReponseV3([{"price": 486}]))
+
+        url, params, timeout = appels[0]
+        self.assertIn("/v3/prices_for_dates", url)
+        self.assertEqual(params["one_way"], "false")
+        self.assertEqual((params["origin"], params["destination"]), ("DKR", "CDG"))
+        self.assertIsNotNone(timeout)
+
+    def test_renvoie_l_offre_la_moins_chere(self):
+        resultat, _ = self._appeler(_ReponseV3(
+            [{"price": 700}, {"price": 486}, {"price": None}, {"price": 512}]))
+
+        self.assertEqual(resultat["price"], 486)
+
+    def test_renvoie_vide_sans_donnees(self):
+        for data in ([], None, [{"price": None}]):
+            with self.subTest(data=data):
+                resultat, _ = self._appeler(_ReponseV3(data))
+                self.assertEqual(resultat, {})
+
+    def test_une_erreur_http_leve_une_exception_reseau(self):
+        """mesurer_rabattements ne rattrape que RequestException pour se
+        replier sur la table : un code invalide (HTTP 400) doit en etre une."""
+        with self.assertRaises(requests.exceptions.RequestException):
+            self._appeler(_ReponseV3(None, status_code=400))
+
+
 class TestMesurerRabattements(unittest.TestCase):
     """La fonction de prix est injectee : aucun appel reseau ici."""
 
@@ -389,8 +448,8 @@ class TestMesurerRabattements(unittest.TestCase):
         self.assertTrue(mesures[("Dakar", "Casablanca")]["mesure"])
 
     def test_replie_sur_la_table_quand_l_api_ne_repond_rien(self):
-        """Cas le plus frequent : 17 des 40 segments n'ont aucun prix,
-        dont CDG pour les cinq villes."""
+        """Cas frequent : 19 des 40 segments n'avaient aucun prix sur aucun
+        endpoint le 2026-09-13, et la liste change d'un jour a l'autre."""
         mesures = hub_deals_db.mesurer_rabattements(
             [("Dakar", "Paris")], get_prix=self._prix({}), pause=False)
 
@@ -424,6 +483,25 @@ class TestMesurerRabattements(unittest.TestCase):
              ("Dakar", "Casablanca")], get_prix=get_prix, pause=False)
 
         self.assertEqual(len(appels), 1)
+
+    def test_par_defaut_mesure_via_v3_et_non_v1(self):
+        """v1/prices/cheap ne renvoie RIEN pour les segments vers Paris :
+        mesure a l'alerte, Dakar->Paris ne l'a ete aucun jour sur 22. v3 les
+        couvre, au meme prix que v1 partout ou les deux repondent (sonde du
+        2026-09-13 : 17 segments, ecart nul)."""
+        from unittest import mock
+
+        def v1_interdit(origine, destination):
+            raise AssertionError("la mesure ne doit plus passer par v1")
+
+        with mock.patch.object(hub_deals_db, "get_prix_route", v1_interdit), \
+             mock.patch.object(hub_deals_db, "get_prix_segment",
+                               self._prix({("DKR", "CDG"): 486})):
+            mesures = hub_deals_db.mesurer_rabattements(
+                [("Dakar", "Paris")], pause=False)
+
+        self.assertEqual(mesures[("Dakar", "Paris")]["prix"], 486)
+        self.assertTrue(mesures[("Dakar", "Paris")]["mesure"])
 
     def test_ignore_un_nom_de_hub_inconnu_sans_lever(self):
         """Un nom absent de HUBS ne doit pas faire echouer une notification."""

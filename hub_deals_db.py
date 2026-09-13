@@ -295,6 +295,39 @@ def get_prix_route(origin: str, destination: str) -> dict:
     return min(offres.values(), key=lambda o: o.get("price") or 999999)
 
 
+def get_prix_segment(origin: str, destination: str) -> dict:
+    """
+    Prix en cache pour un trajet ville -> hub, via v3/prices_for_dates.
+
+    Sert a mesurer le rabattement au moment de l'alerte. v1/prices/cheap
+    (get_prix_route) ne renvoie rien pour les segments vers Paris, qui ne
+    furent donc jamais mesures ; sonde du 2026-09-13 sur les 40 segments :
+    v1 en couvre 17, v3 21 -- les memes 17 au meme prix, plus 4 vers CDG.
+
+    one_way=false est OBLIGATOIRE : voir le piege aller simple /
+    aller-retour documente au-dessus de RABATTEMENT.
+
+    Renvoie {} si aucun prix connu, sinon l'offre la moins chere. Leve une
+    RequestException sur erreur HTTP, que l'appelant rattrape.
+    """
+    url = f"{BASE_URL}/aviasales/v3/prices_for_dates"
+    params = {
+        "origin": origin,
+        "destination": destination,
+        "currency": "eur",
+        "one_way": "false",
+        "sorting": "price",
+        "limit": 30,
+        "token": TOKEN,
+    }
+    response = requests.get(url, params=params, timeout=20)
+    response.raise_for_status()
+    offres = [o for o in (response.json().get("data") or []) if o.get("price")]
+    if not offres:
+        return {}
+    return min(offres, key=lambda o: o["price"])
+
+
 def construire_lien(origin: str, destination: str, departure_at: str) -> str:
     """
     Reconstruit un lien de recherche Aviasales. v1/prices/cheap ne renvoie
@@ -387,6 +420,10 @@ def mesurer_rabattements(couples, get_prix=None, pause: bool = True) -> dict:
     selon l'anciennete de la valeur. On mesure donc au moment de
     l'alerte, sans jamais toucher a ce qui est enregistre en base.
 
+    La liste des segments mesurables CHANGE d'un jour a l'autre (c'est un
+    cache) : les marques [M]/[NM] de la table sont un instantane, pas une
+    propriete durable. 21 des 40 repondaient le 2026-09-13.
+
     `couples` porte le NOM du hub (« Paris »), comme la colonne
     hub_origine des anomalies -- pas le code IATA.
 
@@ -395,7 +432,7 @@ def mesurer_rabattements(couples, get_prix=None, pause: bool = True) -> dict:
     fonction pure de son entree.
     """
     if get_prix is None:
-        get_prix = get_prix_route
+        get_prix = get_prix_segment   # v3 : v1 ne couvre pas les segments vers Paris
 
     iata_par_nom = {info["nom"]: iata for iata, info in HUBS.items()}
     mesures = {}
