@@ -168,6 +168,44 @@ class TestChercherItineraires(unittest.TestCase):
         self.assertEqual(len(erreurs), 1)
         self.assertIn("TST", erreurs[0])
 
+    def test_par_defaut_l_aller_passe_par_v3_et_le_reste_par_v1(self):
+        """v1 ne renvoie rien pour les segments ville -> Paris (sonde du
+        2026-09-13) : ils retombaient toujours sur la valeur estimee."""
+        from unittest import mock
+        appels_v3 = []
+
+        def v3(origine, destination):
+            appels_v3.append((origine, destination))
+            return {"price": 320} if (origine, destination) == ("TST", "CDG") else {}
+
+        with mock.patch.object(recherche.collecteur, "get_prix_segment", v3), \
+             mock.patch.object(recherche.collecteur, "get_prix_route",
+                               self._prix({("CDG", "BKK"): 540})):
+            options, _ = recherche.chercher_itineraires("Testville", "BKK", pause=False)
+
+        via_paris = [o for o in options if o["hub"] == "CDG"][0]
+        self.assertEqual(via_paris["prix_aller"], 320)
+        self.assertFalse(via_paris["aller_estime"])
+        # v3 ne sert qu'aux trajets ville -> hub, jamais au direct ni au principal
+        self.assertEqual(sorted(appels_v3), [("TST", "CDG"), ("TST", "CMN"), ("TST", "IST")])
+
+    def test_une_fonction_injectee_sert_pour_tous_les_segments(self):
+        """Sinon chaque test qui injecte get_prix ferait de vrais appels
+        reseau pour l'aller."""
+        from unittest import mock
+
+        def interdit(origine, destination):
+            raise AssertionError("appel reseau reel pendant un test")
+
+        with mock.patch.object(recherche.collecteur, "get_prix_segment", interdit), \
+             mock.patch.object(recherche.collecteur, "get_prix_route", interdit):
+            options, _ = recherche.chercher_itineraires(
+                "Testville", "BKK",
+                get_prix=self._prix({("TST", "CDG"): 320, ("CDG", "BKK"): 540}),
+                pause=False)
+
+        self.assertEqual(options[0]["total"], 860)
+
 
 class TestMasquageDesSecrets(unittest.TestCase):
     """requests place l'URL COMPLETE dans ses exceptions -- token compris.
