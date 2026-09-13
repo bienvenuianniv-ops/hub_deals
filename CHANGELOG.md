@@ -4,6 +4,15 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Pro
 
 ## 2026-09-13
 
+### Modifié
+- **Le relevé tourne sans fenêtre (`pythonw.exe`).** 4 relevés sur 99 avaient été tués par la
+  fermeture de leur console (`0xC000013A` dans l'historique du planificateur, les 04, 07, 08 et
+  09/09). Deux effets de bord de `pythonw` constatés puis traités, test à l'appui : chaque commande
+  git ouvrait sa propre fenêtre (`CREATE_NO_WINDOW`), et `sys.stderr` valant `None`, un plantage
+  aurait été totalement muet (`sys.excepthook` → journal, masqué ; l'absence de token est
+  journalisée au lieu de passer par `SystemExit`). Vérifié sous `pythonw` sur une copie : token
+  absent et plantage réel apparaissent bien dans le journal, sans le token.
+
 ### Corrigé
 - **`recherche.py` mesure aussi l'aller vers Paris.** Le trajet ville → hub passe par
   `get_prix_segment()` (v3), le vol direct et le segment hub → destination restent sur v1. Vérifié
