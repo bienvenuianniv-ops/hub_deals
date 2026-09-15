@@ -676,6 +676,55 @@ def decouper_message(blocs: list, entete: str, pied: str = "") -> list:
     ]
 
 
+def envoyer_telegram_a(chat_id, message: str, journaliser: bool = True) -> tuple:
+    """Envoie un message a un destinataire quelconque et renvoie un statut
+    que l'appelant peut exploiter : ('ok', None), ('bloque', None) sur 403
+    (l'abonne a bloque le bot), ('trop_vite', secondes) sur 429, ou
+    ('echec', raison courte).
+
+    journaliser=False : le corps n'est pas recopie au journal (messages
+    d'abonnes). Les erreurs, elles, sont toujours journalisees.
+    """
+    if not TELEGRAM_BOT_TOKEN or not chat_id:
+        if journaliser:
+            journaliser_message(
+                message, "message NON envoye (Telegram non configure)")
+        return ("echec", "non configure")
+
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    try:
+        reponse = requests.post(url, data={
+            "chat_id": chat_id,
+            "text": message,
+            "parse_mode": "HTML",
+        }, timeout=15)
+    except requests.exceptions.RequestException as e:
+        log(f"   -> ERREUR envoi Telegram : {e}")
+        if journaliser:
+            journaliser_message(message, "message Telegram NON parti (erreur reseau)")
+        return ("echec", "reseau")
+
+    if reponse.status_code == 403:
+        return ("bloque", None)
+
+    if reponse.status_code == 429:
+        try:
+            delai = int(json.loads(reponse.text)["parameters"]["retry_after"])
+        except (ValueError, KeyError, TypeError):
+            delai = 1
+        return ("trop_vite", delai)
+
+    if reponse.status_code != 200:
+        log(f"   -> ECHEC Telegram : HTTP {reponse.status_code} {reponse.text[:200]}")
+        if journaliser:
+            journaliser_message(message, "message Telegram REFUSE")
+        return ("echec", f"HTTP {reponse.status_code}")
+
+    if journaliser:
+        journaliser_message(message, "message Telegram envoye")
+    return ("ok", None)
+
+
 def envoyer_telegram(message: str) -> bool:
     """Envoie un message via le bot Telegram, si le token et le chat_id
     sont renseignes. Renvoie True si Telegram l'a accepte.
@@ -695,26 +744,14 @@ def envoyer_telegram(message: str) -> bool:
         journaliser_message(
             message, "message NON envoye (Telegram non configure)")
         return False
-
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    try:
-        reponse = requests.post(url, data={
-            "chat_id": TELEGRAM_CHAT_ID,
-            "text": message,
-            "parse_mode": "HTML",
-        }, timeout=15)
-    except requests.exceptions.RequestException as e:
-        log(f"   -> ERREUR envoi Telegram : {e}")
-        journaliser_message(message, "message Telegram NON parti (erreur reseau)")
-        return False
-
-    if reponse.status_code != 200:
-        log(f"   -> ECHEC Telegram : HTTP {reponse.status_code} {reponse.text[:200]}")
+    statut, detail = envoyer_telegram_a(TELEGRAM_CHAT_ID, message)
+    if statut in ("bloque", "trop_vite"):
+        # le proprietaire ne bloque pas son propre bot : ces cas restent
+        # des echecs, et doivent se lire comme tels au journal
+        code = 403 if statut == "bloque" else 429
+        log(f"   -> ECHEC Telegram : HTTP {code} ({statut})")
         journaliser_message(message, "message Telegram REFUSE")
-        return False
-
-    journaliser_message(message, "message Telegram envoye")
-    return True
+    return statut == "ok"
 
 
 def sauvegarder_et_alerter(conn: sqlite3.Connection,
