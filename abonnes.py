@@ -11,6 +11,8 @@ Spec : docs/superpowers/specs/2026-09-15-bot-abonnes-design.md
 
 from datetime import datetime, timezone
 
+import hub_deals_db
+
 # cle de RABATTEMENT -> nom affiche aux abonnes. Un test verifie que les
 # deux ensembles de cles sont identiques.
 NOMS_AFFICHES = {
@@ -111,3 +113,45 @@ def abonnes_a_servir(conn, exclure_chat_id=None) -> list:
     if exclure_chat_id is not None:
         servis = [a for a in servis if str(a["chat_id"]) != str(exclure_chat_id)]
     return servis
+
+
+# Les prix viennent d'un cache Aviasales (jusqu'a 7 jours) : les regles
+# Travelpayouts interdisent de presenter une remise comme garantie.
+MENTION_PRIX = "<i>Prix repéré aujourd'hui, il peut avoir changé : vérifie avant de réserver.</i>"
+
+
+def filtrer_groupes(groupes: list, ville: str) -> list:
+    """Reduit chaque groupe (une affaire hub -> destination) aux lignes de
+    la ville de l'abonne ; les groupes qui n'en ont pas disparaissent."""
+    filtres = []
+    for groupe in groupes:
+        garde = [a for a in groupe if a["ville_depart"] == ville]
+        if garde:
+            filtres.append(garde)
+    return filtres
+
+
+def _bloc_abonne(a: dict, ville: str) -> str:
+    lien = hub_deals_db.url_aviasales(a["lien"], ville.lower())
+    return (
+        f"\n<b>{a['destination']}</b> via {a['hub']}\n"
+        f"{a['prix_actuel']:.0f}€ (-{a['baisse_pct']:.0f}%) — "
+        f"{a['economie']:.0f}€ de moins que d'habitude\n"
+        f"{lien}"
+    )
+
+
+def messages_abonne(groupes: list, ville: str) -> list:
+    """Morceaux de message a envoyer a un abonne de 'ville' ; [] si aucune
+    affaire -- on n'envoie pas de « rien aujourd'hui », qui deviendrait un
+    bruit qu'on cesse de lire."""
+    filtres = filtrer_groupes(groupes, ville)
+    if not filtres:
+        return []
+    n = len(filtres)
+    affaires = "1 bonne affaire" if n == 1 else f"{n} bonnes affaires"
+    entete = f"<b>{affaires} au départ de {NOMS_AFFICHES[ville]}</b>"
+    # une ville n'a qu'une ligne par groupe : le premier element suffit
+    blocs = [_bloc_abonne(g[0], ville) for g in filtres]
+    # ligne vide avant la mention
+    return hub_deals_db.decouper_message(blocs, entete, "\n" + MENTION_PRIX)

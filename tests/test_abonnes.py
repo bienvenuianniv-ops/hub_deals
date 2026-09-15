@@ -108,5 +108,67 @@ class TestDonneesAbonnes(unittest.TestCase):
         self.assertEqual([a["chat_id"] for a in servis], [1])
 
 
+def _anomalie(ville, dest="Sao Paulo", hub="Abidjan", prix=1716.0, baisse=23.4,
+              economie=500.0, lien="/search/ABJ0302SAO1", mesure=385.0):
+    return {"destination": dest, "hub": hub, "ville_depart": ville,
+            "prix_actuel": prix, "moyenne_historique": prix + economie,
+            "baisse_pct": baisse, "economie": economie,
+            "rabattement_mesure": mesure, "lien": lien}
+
+
+class TestMessageAbonne(unittest.TestCase):
+    def setUp(self):
+        self._marker = hub_deals_db.TRAVELPAYOUTS_MARKER
+        hub_deals_db.TRAVELPAYOUTS_MARKER = "123456"
+        villes = sorted(abonnes.NOMS_AFFICHES)
+        self.v1, self.v2 = villes[0], villes[1]
+
+    def tearDown(self):
+        hub_deals_db.TRAVELPAYOUTS_MARKER = self._marker
+
+    def test_filtre_un_groupe_multi_villes_a_la_bonne_ligne(self):
+        groupes = [[_anomalie(self.v1, prix=1716), _anomalie(self.v2, prix=2327)]]
+        filtres = abonnes.filtrer_groupes(groupes, self.v2)
+        self.assertEqual(len(filtres), 1)
+        self.assertEqual([a["ville_depart"] for a in filtres[0]], [self.v2])
+
+    def test_retire_les_groupes_sans_la_ville(self):
+        groupes = [[_anomalie(self.v1)], [_anomalie(self.v2, dest="Rome", lien="/r")]]
+        filtres = abonnes.filtrer_groupes(groupes, self.v1)
+        self.assertEqual([g[0]["destination"] for g in filtres], ["Sao Paulo"])
+
+    def test_aucune_affaire_aucun_message(self):
+        self.assertEqual(abonnes.messages_abonne([[_anomalie(self.v1)]], self.v2), [])
+
+    def test_contenu_du_message(self):
+        [m] = abonnes.messages_abonne([[_anomalie(self.v1)]], self.v1)
+        self.assertIn(f"<b>1 bonne affaire au départ de {abonnes.NOMS_AFFICHES[self.v1]}</b>", m)
+        self.assertIn("<b>Sao Paulo</b> via Abidjan", m)
+        self.assertIn("1716€ (-23%)", m)
+        self.assertIn("500€ de moins que d'habitude", m)
+        self.assertIn(f"?marker=123456.{self.v1.lower()}", m)
+        self.assertTrue(m.endswith(abonnes.MENTION_PRIX))
+
+    def test_pluriel(self):
+        groupes = [[_anomalie(self.v1)], [_anomalie(self.v1, dest="Rome", lien="/r")]]
+        [m] = abonnes.messages_abonne(groupes, self.v1)
+        self.assertIn("<b>2 bonnes affaires au départ de", m)
+
+    def test_aucun_detail_de_rabattement(self):
+        """Information technique reservee au proprietaire."""
+        for mesure in (385.0, None):
+            [m] = abonnes.messages_abonne([[_anomalie(self.v1, mesure=mesure)]], self.v1)
+            self.assertNotIn("rabattement", m.lower())
+
+    def test_la_mention_est_dans_chaque_morceau(self):
+        groupes = [[_anomalie(self.v1, dest="Destination %d" % i, lien="/s%d" % i)]
+                   for i in range(80)]
+        morceaux = abonnes.messages_abonne(groupes, self.v1)
+        self.assertGreater(len(morceaux), 1)
+        for m in morceaux:
+            self.assertIn(abonnes.MENTION_PRIX, m)
+            self.assertLessEqual(len(m), hub_deals_db.LIMITE_TELEGRAM)
+
+
 if __name__ == "__main__":
     unittest.main()
