@@ -899,6 +899,25 @@ def notifier_abonnes_sans_risque(conn, groupes: list) -> None:
         log(f"   -> envoi aux abonnes impossible : {e}")
 
 
+def verifier_ecoute_et_alerter(conn) -> None:
+    """Previent le proprietaire si bot_ecoute.py ne tourne plus : sinon un
+    invite tape /start dans le vide pendant des jours sans que personne le
+    sache. Ne leve jamais."""
+    try:
+        import abonnes
+        abonnes.init_abonnes(conn)
+        if abonnes.ecoute_muette(conn, abonnes.maintenant()):
+            envoyer_telegram(
+                "<b>Probleme technique -- l'ecoute du bot est arretee</b>\n\n"
+                "Les invites qui tapent /start n'ont pas de reponse.\n\n"
+                "A verifier : tache planifiee « Bot vols - ecoute » et "
+                "bot_ecoute_log.txt"
+            )
+            log("   -> ALERTE ecoute du bot arretee envoyee")
+    except Exception as e:
+        log(f"   -> controle de l'ecoute du bot impossible : {e}")
+
+
 def verifier_et_notifier_anomalies(conn: sqlite3.Connection, date_collecte: str) -> None:
     """Compare le releve du jour a la moyenne historique de chaque
     destination (logique centralisee dans anomaly_detection.py), et
@@ -1028,6 +1047,10 @@ if __name__ == "__main__":
     # git ou de reseau ne doit pas le faire echouer -- mais elle doit
     # se voir, d'ou la notification en cas d'echec.
     sauvegarder_et_alerter(conn)
+
+    # en fin de releve : l'ecoute lancee a la meme ouverture de session a eu
+    # le temps de rafraichir son temoin
+    verifier_ecoute_et_alerter(conn)
 
     log("=== Fin d'execution ===")
 

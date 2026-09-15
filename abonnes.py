@@ -116,6 +116,31 @@ def abonnes_a_servir(conn, exclure_chat_id=None) -> list:
     return servis
 
 
+# Le long polling rafraichit le temoin au moins toutes les ~50 s. Mesure en
+# FIN de releve (~5 min apres son demarrage), 10 min laissent a l'ecoute
+# lancee a la meme ouverture de session, ou reveillee de veille, le temps de
+# faire son premier appel -- un seuil de 2 h aurait ete fausse par la veille.
+SEUIL_ECOUTE_MUETTE_S = 600
+
+
+def noter_ecoute(conn, quand: str) -> None:
+    conn.execute("""
+        INSERT INTO etat_bot (cle, valeur) VALUES ('derniere_ecoute', ?)
+        ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur
+    """, (quand,))
+    conn.commit()
+
+
+def ecoute_muette(conn, quand: str) -> bool:
+    ligne = conn.execute(
+        "SELECT valeur FROM etat_bot WHERE cle = 'derniere_ecoute'").fetchone()
+    if ligne is None:
+        # jamais d'ecoute : anormal seulement si des invites existent
+        return conn.execute("SELECT COUNT(*) FROM abonnes").fetchone()[0] > 0
+    ecart = datetime.fromisoformat(quand) - datetime.fromisoformat(ligne[0])
+    return ecart.total_seconds() > SEUIL_ECOUTE_MUETTE_S
+
+
 # Les prix viennent d'un cache Aviasales (jusqu'a 7 jours) : les regles
 # Travelpayouts interdisent de presenter une remise comme garantie.
 MENTION_PRIX = "<i>Prix repéré aujourd'hui, il peut avoir changé : vérifie avant de réserver.</i>"

@@ -345,5 +345,71 @@ class TestReleveNotifieLesAbonnes(unittest.TestCase):
         self.assertIn("sqlite3.connect(DB_PATH, timeout=30)", bloc)
 
 
+class TestTemoinEcoute(unittest.TestCase):
+    def setUp(self):
+        self.conn = _base()
+
+    def tearDown(self):
+        self.conn.close()
+
+    def test_temoin_recent(self):
+        abonnes.noter_ecoute(self.conn, "2026-09-15T12:55:00+00:00")
+        self.assertFalse(abonnes.ecoute_muette(self.conn, "2026-09-15T13:04:00+00:00"))
+
+    def test_temoin_ancien(self):
+        abonnes.noter_ecoute(self.conn, "2026-09-15T12:50:00+00:00")
+        self.assertTrue(abonnes.ecoute_muette(self.conn, "2026-09-15T13:04:00+00:00"))
+
+    def test_temoin_mis_a_jour(self):
+        abonnes.noter_ecoute(self.conn, "2026-09-15T08:00:00+00:00")
+        abonnes.noter_ecoute(self.conn, "2026-09-15T13:00:00+00:00")
+        self.assertFalse(abonnes.ecoute_muette(self.conn, "2026-09-15T13:04:00+00:00"))
+
+    def test_temoin_absent_sans_abonne_n_alerte_pas(self):
+        """Bot jamais installe : rien a surveiller."""
+        self.assertFalse(abonnes.ecoute_muette(self.conn, T0))
+
+    def test_temoin_absent_avec_abonnes_alerte(self):
+        abonnes.inscrire(self.conn, 1, "x", T0)
+        self.assertTrue(abonnes.ecoute_muette(self.conn, T1))
+
+
+class TestAlerteEcouteArretee(unittest.TestCase):
+    def setUp(self):
+        self.envois = []
+        self.lignes = []
+        self._log = hub_deals_db.log
+        self._envoyer = hub_deals_db.envoyer_telegram
+        hub_deals_db.log = self.lignes.append
+        hub_deals_db.envoyer_telegram = lambda msg: self.envois.append(msg) or True
+        self.conn = _base()
+
+    def tearDown(self):
+        hub_deals_db.log = self._log
+        hub_deals_db.envoyer_telegram = self._envoyer
+        self.conn.close()
+
+    def test_alerte_si_ecoute_muette(self):
+        abonnes.noter_ecoute(self.conn, "2020-01-01T00:00:00+00:00")
+        hub_deals_db.verifier_ecoute_et_alerter(self.conn)
+        self.assertEqual(len(self.envois), 1)
+        self.assertIn("ecoute du bot est arretee", self.envois[0])
+
+    def test_rien_si_ecoute_vivante(self):
+        abonnes.noter_ecoute(self.conn, abonnes.maintenant())
+        hub_deals_db.verifier_ecoute_et_alerter(self.conn)
+        self.assertEqual(self.envois, [])
+
+    def test_ne_leve_jamais(self):
+        hub_deals_db.verifier_ecoute_et_alerter(None)
+        self.assertEqual(self.envois, [])
+
+    def test_appele_avant_la_fin_du_releve(self):
+        import inspect
+        bloc = inspect.getsource(hub_deals_db).split('if __name__ == "__main__":')[1]
+        self.assertLess(bloc.index("verifier_ecoute_et_alerter(conn)"),
+                        bloc.index("=== Fin d'execution ==="))
+
+
 if __name__ == "__main__":
     unittest.main()
