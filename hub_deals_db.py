@@ -624,7 +624,7 @@ def journaliser_message(message: str, entete: str) -> None:
     log("--- fin du message ---")
 
 
-def decouper_message(blocs: list, entete: str) -> list:
+def decouper_message(blocs: list, entete: str, pied: str = "") -> list:
     """Repartit des blocs de texte en messages respectant LIMITE_TELEGRAM.
 
     Telegram refuse tout sendMessage de plus de 4096 caracteres avec un
@@ -639,6 +639,10 @@ def decouper_message(blocs: list, entete: str) -> list:
     L'entete est repete sur chaque morceau, suivi de « (i/n) » des qu'il
     y en a plusieurs. Un message unique n'est pas numerote : « (1/1) »
     n'apprend rien.
+
+    Un pied (mention a repeter sous chaque morceau) peut etre fourni : sa
+    place est retiree du budget avant la repartition, sinon il ferait
+    deborder les morceaux pleins.
     """
     if not blocs:
         return []
@@ -646,6 +650,8 @@ def decouper_message(blocs: list, entete: str) -> list:
     # marge pour le suffixe « (12/12) » ajoute apres coup a l'entete
     RESERVE_NUMEROTATION = 16
     budget = LIMITE_TELEGRAM - len(entete) - RESERVE_NUMEROTATION
+    if pied:
+        budget -= len(pied) + 1  # +1 pour le "\n" qui le precede
 
     groupes = []
     courant = []
@@ -663,8 +669,9 @@ def decouper_message(blocs: list, entete: str) -> list:
         groupes.append(courant)
 
     nb = len(groupes)
+    suffixe = f"\n{pied}" if pied else ""
     return [
-        "\n".join([entete if nb == 1 else f"{entete} ({i}/{nb})"] + groupe)
+        "\n".join([entete if nb == 1 else f"{entete} ({i}/{nb})"] + groupe) + suffixe
         for i, groupe in enumerate(groupes, start=1)
     ]
 

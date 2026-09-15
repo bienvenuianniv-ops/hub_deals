@@ -76,5 +76,33 @@ class TestMarkerAbsentJournalise(unittest.TestCase):
         self.assertNotIn("TRAVELPAYOUTS_MARKER", "\n".join(self.lignes))
 
 
+class TestPiedDeMessage(unittest.TestCase):
+    PIED = "<i>Prix repéré aujourd'hui, il peut avoir changé : vérifie avant de réserver.</i>"
+
+    def _blocs(self, n=72, taille=140):
+        return ["<b>destination %d</b>\n%s" % (i, "x" * taille) for i in range(n)]
+
+    def test_chaque_morceau_se_termine_par_le_pied(self):
+        morceaux = hub_deals_db.decouper_message(self._blocs(), "<b>entete</b>", self.PIED)
+        self.assertGreater(len(morceaux), 1)
+        for m in morceaux:
+            self.assertTrue(m.endswith("\n" + self.PIED))
+
+    def test_le_pied_ne_fait_pas_depasser_la_limite(self):
+        """Blocs calibres pour remplir le budget d'origine au caractere pres :
+        sans reserve pour le pied, au moins un morceau deborderait."""
+        entete = "<b>entete</b>"
+        budget = hub_deals_db.LIMITE_TELEGRAM - len(entete) - 16
+        blocs = ["y" * 99] * (budget // 100) * 3
+        morceaux = hub_deals_db.decouper_message(blocs, entete, self.PIED)
+        for m in morceaux:
+            self.assertLessEqual(len(m), hub_deals_db.LIMITE_TELEGRAM)
+
+    def test_sans_pied_rien_ne_change(self):
+        blocs = self._blocs()
+        self.assertEqual(hub_deals_db.decouper_message(blocs, "<b>e</b>"),
+                         hub_deals_db.decouper_message(blocs, "<b>e</b>", ""))
+
+
 if __name__ == "__main__":
     unittest.main()
