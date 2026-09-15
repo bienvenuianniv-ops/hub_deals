@@ -42,6 +42,10 @@ LOG_PATH = "flight_deals_log.txt"
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
+# Identifiant d'affilie Travelpayouts. Absent : liens sans parametres
+# affilies (comportement d'avant le 2026-09-15), jamais de blocage.
+TRAVELPAYOUTS_MARKER = os.environ.get("TRAVELPAYOUTS_MARKER")
+
 LIMITE_TELEGRAM = 4096  # plafond impose par l'API Telegram sur sendMessage.
                         # Au-dela : HTTP 400 « message is too long », et le
                         # message entier est perdu -- pas tronque.
@@ -343,6 +347,26 @@ def construire_lien(origin: str, destination: str, departure_at: str) -> str:
         return f"/search/{origin}{jour}{mois}{destination}1"
     except (ValueError, IndexError):
         return ""
+
+
+def url_aviasales(chemin: str, etiquette: str) -> str:
+    """
+    Lien complet vers Aviasales, avec l'identifiant d'affilie et une
+    etiquette (SubID) qui separe les clics par destinataire dans le
+    tableau de bord Travelpayouts : une ville par abonne, 'proprietaire'
+    pour le message complet.
+
+    Source de la syntaxe : aide Travelpayouts « ID and SubID (Affiliate
+    marker and additional marker) » et « Aviasales affiliate links »
+    (extraits lus le 2026-09-15, pages elles-memes en 403) : le lien porte
+    marker=<ID>, et le SubID suit l'ID apres un point ; lettres latines,
+    chiffres et _ uniquement. A confirmer par un clic reel visible dans le
+    tableau de bord avec son etiquette.
+    """
+    url = f"https://www.aviasales.com{chemin}"
+    if not TRAVELPAYOUTS_MARKER:
+        return url
+    return f"{url}?marker={TRAVELPAYOUTS_MARKER}.{etiquette}"
 
 
 def enregistrer_prix(conn: sqlite3.Connection, hub_iata: str, dest_iata: str,
@@ -778,7 +802,7 @@ def construire_bloc(groupe: list) -> str:
     possible -- une ville a l'historique plus court peut rester seule.
     """
     premier = groupe[0]
-    lien = f"https://www.aviasales.com{premier['lien']}"
+    lien = url_aviasales(premier["lien"], "proprietaire")
 
     if len(groupe) == 1:
         a = premier
@@ -837,6 +861,8 @@ def verifier_et_notifier_anomalies(conn: sqlite3.Connection, date_collecte: str)
 
     groupes = grouper_anomalies(anomalies)
     log(f"{len(anomalies)} anomalie(s) regroupee(s) en {len(groupes)} affaire(s).")
+    if not TRAVELPAYOUTS_MARKER:
+        log("   -> liens sans identifiant d'affilie (TRAVELPAYOUTS_MARKER absent)")
 
     entete = f"<b>{len(groupes)} bonne(s) affaire(s) detectee(s) !</b>"
     blocs = [construire_bloc(g) for g in groupes]
