@@ -16,8 +16,20 @@ Spec : docs/superpowers/specs/2026-09-15-bot-abonnes-design.md
 import hmac
 import os
 import re
+import sqlite3
+import sys
+import time
+from datetime import datetime, timezone
+
+import requests
 
 import abonnes
+import hub_deals_db
+
+LOG_PATH = "bot_ecoute_log.txt"
+DELAI_LONG_POLLING = 50   # secondes : Telegram garde la requete ouverte
+ATTENTE_MAX = 300         # plafond de l'attente croissante apres erreur
+ATTENTE_CONFLIT = 30      # HTTP 409 : un autre lecteur de getUpdates
 
 MSG_INVITATION = "Ce bot est pour l'instant sur invitation."
 MSG_COMPLET = "Le test est complet pour le moment."
@@ -40,6 +52,57 @@ def code_valide(code):
     if code and re.fullmatch(r"[A-Za-z0-9_-]{12,64}", code):
         return code
     return None
+
+
+CODE_INVITATION = code_valide(os.environ.get("HUB_DEALS_CODE_INVITATION"))
+
+
+def masquer(message: str) -> str:
+    """Tokens (via hub_deals_db) et code d'invitation remplaces par ***."""
+    message = hub_deals_db.masquer_secrets(message)
+    if CODE_INVITATION:
+        message = message.replace(CODE_INVITATION, "***")
+    return message
+
+
+def log(message: str) -> None:
+    """Journal separe de celui du releve : deux processus, deux fichiers."""
+    horodatage = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    ligne = f"[{horodatage}] {masquer(message)}"
+    print(ligne)  # silencieux sous pythonw (stdout None)
+    with open(LOG_PATH, "a", encoding="utf-8") as f:
+        f.write(ligne + "\n")
+
+
+def journaliser_plantage(type_exc, valeur, trace) -> None:
+    """Crochet sys.excepthook : sous pythonw, stderr vaut None."""
+    import traceback
+    log("=== PLANTAGE de l'ecoute ===")
+    log("".join(traceback.format_exception(type_exc, valeur, trace)).rstrip())
+
+
+def appeler(token, methode, params, timeout=15):
+    """Seule fonction reseau du module. Renvoie (code HTTP, corps JSON)."""
+    reponse = requests.post(f"https://api.telegram.org/bot{token}/{methode}",
+                            json=params, timeout=timeout)
+    try:
+        corps = reponse.json()
+    except ValueError:
+        corps = {}
+    return reponse.status_code, corps
+
+
+def executer_actions(token, actions, appeler_fn) -> None:
+    for action in actions:
+        params = {k: v for k, v in action.items() if k != "methode"}
+        try:
+            statut, corps = appeler_fn(token, action["methode"], params)
+        except requests.exceptions.RequestException as e:
+            log(f"ERREUR reseau {action['methode']} : {e}")
+            continue
+        if statut != 200:
+            log(f"ECHEC {action['methode']} HTTP {statut} "
+                f"{(corps or {}).get('description', '')} chat_id={params.get('chat_id')}")
 
 
 def _envoi(chat_id, texte, clavier=False) -> dict:
@@ -124,3 +187,85 @@ def traiter_update(conn, update: dict, code, quand: str):
         return [_envoi(chat_id, MSG_STOP)], f"stop chat_id={chat_id}"
 
     return [_envoi(chat_id, MSG_AIDE)], f"message libre chat_id={chat_id}"
+
+
+def _attente_apres_echec(echecs: int) -> int:
+    return min(ATTENTE_MAX, 5 * 2 ** (echecs - 1))
+
+
+def boucle(conn, token, code, appeler_fn=appeler, dormir=time.sleep,
+           quand_fn=abonnes.maintenant, tours=None) -> None:
+    """Long polling getUpdates. tours=None : sans fin (production)."""
+    offset = None
+    echecs = 0
+    tour = 0
+    while tours is None or tour < tours:
+        tour += 1
+        params = {"timeout": DELAI_LONG_POLLING,
+                  "allowed_updates": ["message", "callback_query"]}
+        if offset is not None:
+            params["offset"] = offset
+        try:
+            statut, corps = appeler_fn(token, "getUpdates", params,
+                                       timeout=DELAI_LONG_POLLING + 10)
+        except requests.exceptions.RequestException as e:
+            echecs += 1
+            attente = _attente_apres_echec(echecs)
+            log(f"ERREUR reseau getUpdates ({e}) : nouvel essai dans {attente} s")
+            dormir(attente)
+            continue
+
+        if statut == 409:
+            log(f"CONFLIT HTTP 409 : un autre programme lit getUpdates, "
+                f"nouvel essai dans {ATTENTE_CONFLIT} s")
+            dormir(ATTENTE_CONFLIT)
+            continue
+        if statut != 200:
+            echecs += 1
+            attente = _attente_apres_echec(echecs)
+            log(f"ECHEC getUpdates HTTP {statut} {(corps or {}).get('description', '')} : "
+                f"nouvel essai dans {attente} s")
+            dormir(attente)
+            continue
+
+        echecs = 0
+        try:
+            abonnes.noter_ecoute(conn, quand_fn())
+        except sqlite3.OperationalError as e:
+            log(f"ERREUR temoin d'ecoute : {e}")
+
+        for update in corps.get("result", []):
+            try:
+                actions, resume = traiter_update(conn, update, code, quand_fn())
+            except sqlite3.OperationalError as e:
+                # base occupee par le releve : on ne confirme pas cette mise
+                # a jour, Telegram la renverra au tour suivant
+                log(f"Base occupee, mise a jour {update.get('update_id')} rejouee : {e}")
+                break
+            except Exception as e:
+                log(f"ERREUR traitement mise a jour {update.get('update_id')} : {e}")
+                offset = update["update_id"] + 1
+                continue
+            offset = update["update_id"] + 1
+            if resume:
+                log(resume)
+            executer_actions(token, actions, appeler_fn)
+
+
+if __name__ == "__main__":
+    # sous pythonw.exe, rien ne s'affiche : tout plantage doit aller au journal
+    sys.excepthook = journaliser_plantage
+
+    token = hub_deals_db.TELEGRAM_BOT_TOKEN
+    if not token:
+        log("ARRET : il manque TELEGRAM_BOT_TOKEN dans l'environnement.")
+        sys.exit(1)
+    if CODE_INVITATION is None:
+        log("Inscriptions FERMEES : HUB_DEALS_CODE_INVITATION absent ou invalide "
+            "(12 a 64 caracteres parmi A-Z a-z 0-9 _ -).")
+
+    # timeout > duree d'une transaction du releve (~25 s par hub)
+    conn = sqlite3.connect(hub_deals_db.DB_PATH, timeout=60)
+    abonnes.init_abonnes(conn)
+    log("=== Demarrage de l'ecoute ===")
+    boucle(conn, token, CODE_INVITATION)

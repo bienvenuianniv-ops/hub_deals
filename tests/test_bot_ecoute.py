@@ -186,5 +186,183 @@ class TestCommandes(unittest.TestCase):
             self.assertIn("111", resume)
 
 
+class _FauxTelegram:
+    """Remplace appeler() : reponses getUpdates programmees, appels notes."""
+
+    def __init__(self, reponses_get_updates, statut_envoi=200):
+        self.file = list(reponses_get_updates)
+        self.appels = []
+        self.statut_envoi = statut_envoi
+
+    def __call__(self, token, methode, params, timeout=15):
+        self.appels.append((methode, dict(params)))
+        if methode == "getUpdates":
+            reponse = self.file.pop(0)
+            if isinstance(reponse, Exception):
+                raise reponse
+            return reponse
+        return (self.statut_envoi, {"ok": self.statut_envoi == 200})
+
+
+class TestBoucle(unittest.TestCase):
+    def setUp(self):
+        self.conn = sqlite3.connect(":memory:")
+        abonnes.init_abonnes(self.conn)
+        self.lignes = []
+        self.pauses = []
+        self._log = bot_ecoute.log
+        bot_ecoute.log = self.lignes.append
+
+    def tearDown(self):
+        bot_ecoute.log = self._log
+        self.conn.close()
+
+    def _boucle(self, faux, tours):
+        bot_ecoute.boucle(self.conn, "bot-factice", CODE, appeler_fn=faux,
+                          dormir=self.pauses.append, quand_fn=lambda: T0, tours=tours)
+
+    def _derniere_ecoute(self):
+        ligne = self.conn.execute(
+            "SELECT valeur FROM etat_bot WHERE cle='derniere_ecoute'").fetchone()
+        return ligne[0] if ligne else None
+
+    def test_traite_les_mises_a_jour_et_avance_l_offset(self):
+        faux = _FauxTelegram([
+            (200, {"ok": True, "result": [_message(f"/start {CODE}", update_id=41)]}),
+            (200, {"ok": True, "result": []})])
+        self._boucle(faux, tours=2)
+        self.assertIsNotNone(abonnes.trouver(self.conn, 111))
+        methodes = [m for m, _ in faux.appels]
+        self.assertEqual(methodes, ["getUpdates", "sendMessage", "getUpdates"])
+        self.assertNotIn("offset", faux.appels[0][1])
+        self.assertEqual(faux.appels[2][1]["offset"], 42)
+        self.assertEqual(faux.appels[0][1]["allowed_updates"], ["message", "callback_query"])
+
+    def test_le_temoin_est_rafraichi_meme_sans_message(self):
+        faux = _FauxTelegram([(200, {"ok": True, "result": []})])
+        self._boucle(faux, tours=1)
+        self.assertEqual(self._derniere_ecoute(), T0)
+
+    def test_erreur_reseau_attente_croissante_plafonnee(self):
+        import requests
+        faux = _FauxTelegram([requests.exceptions.ConnectionError("coupure")] * 9)
+        self._boucle(faux, tours=9)
+        self.assertEqual(self.pauses, [5, 10, 20, 40, 80, 160, 300, 300, 300])
+        self.assertIsNone(self._derniere_ecoute())
+
+    def test_conflit_409_journalise(self):
+        faux = _FauxTelegram([(409, {"ok": False, "description": "Conflict"})])
+        self._boucle(faux, tours=1)
+        self.assertIn("409", "\n".join(self.lignes))
+        self.assertEqual(self.pauses, [30])
+        self.assertIsNone(self._derniere_ecoute())
+
+    def test_autre_refus_attente_croissante(self):
+        faux = _FauxTelegram([(401, {"ok": False, "description": "Unauthorized"})] * 2)
+        self._boucle(faux, tours=2)
+        self.assertEqual(self.pauses, [5, 10])
+        self.assertIn("401", "\n".join(self.lignes))
+
+    def test_une_mise_a_jour_qui_plante_est_sautee(self):
+        """Sinon une seule mise a jour defectueuse bloquerait l'ecoute."""
+        faux = _FauxTelegram([
+            (200, {"ok": True, "result": [{"update_id": 7, "callback_query": {}}]}),
+            (200, {"ok": True, "result": []})])
+        self._boucle(faux, tours=2)
+        self.assertEqual(faux.appels[1][1]["offset"], 8)
+        self.assertIn("ERREUR", "\n".join(self.lignes))
+
+    def test_base_verrouillee_la_mise_a_jour_est_rejouee(self):
+        """Le releve tient la base ~25 s par hub : la mise a jour ne doit
+        pas etre perdue, on la redemande au tour suivant."""
+        original = bot_ecoute.traiter_update
+
+        def verrouille(*a, **k):
+            raise sqlite3.OperationalError("database is locked")
+        bot_ecoute.traiter_update = verrouille
+        try:
+            faux = _FauxTelegram([
+                (200, {"ok": True, "result": [_message("/stop", update_id=7)]}),
+                (200, {"ok": True, "result": []})])
+            self._boucle(faux, tours=2)
+        finally:
+            bot_ecoute.traiter_update = original
+        self.assertNotIn("offset", faux.appels[1][1])
+
+    def test_un_envoi_refuse_est_journalise_sans_arreter(self):
+        faux = _FauxTelegram([
+            (200, {"ok": True, "result": [_message("bonjour", update_id=1)]})],
+            statut_envoi=400)
+        self._boucle(faux, tours=1)
+        self.assertIn("HTTP 400", "\n".join(self.lignes))
+
+    def test_le_journal_ne_contient_pas_le_texte_recu(self):
+        faux = _FauxTelegram([(200, {"ok": True, "result": [
+            _message(f"/start {CODE}", update_id=1),
+            _message("mon numero 0612", update_id=2)]})])
+        self._boucle(faux, tours=1)
+        journal = "\n".join(self.lignes)
+        self.assertNotIn(CODE, journal)
+        self.assertNotIn("0612", journal)
+
+
+class TestMasquage(unittest.TestCase):
+    def test_token_et_code_masques(self):
+        import hub_deals_db
+        bot, code = hub_deals_db.TELEGRAM_BOT_TOKEN, bot_ecoute.CODE_INVITATION
+        hub_deals_db.TELEGRAM_BOT_TOKEN = "123:secret_bot_token"
+        bot_ecoute.CODE_INVITATION = CODE
+        try:
+            texte = bot_ecoute.masquer(
+                f"https://api.telegram.org/bot123:secret_bot_token/getUpdates {CODE}")
+        finally:
+            hub_deals_db.TELEGRAM_BOT_TOKEN, bot_ecoute.CODE_INVITATION = bot, code
+        self.assertNotIn("secret_bot_token", texte)
+        self.assertNotIn(CODE, texte)
+
+    def test_le_journal_ecrit_est_masque(self):
+        import tempfile
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as dossier:
+            chemin = os.path.join(dossier, "bot.txt")
+            with mock.patch.object(bot_ecoute, "LOG_PATH", chemin), \
+                 mock.patch.object(bot_ecoute, "CODE_INVITATION", CODE), \
+                 mock.patch("builtins.print"):
+                bot_ecoute.log(f"essai {CODE}")
+            with open(chemin, encoding="utf-8") as f:
+                contenu = f.read()
+        self.assertIn("essai ***", contenu)
+
+
+class TestSousPythonw(unittest.TestCase):
+    def test_sans_token_l_arret_est_journalise_sous_pythonw(self):
+        """Sous pythonw, stdout et stderr valent None : sans journal, un
+        demarrage rate serait totalement muet. Le test passe lui-meme par
+        pythonw (lecon du 2026-09-13 : depuis le runner, il ne prouvait rien)."""
+        import subprocess
+        import tempfile
+        pythonw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
+        if not os.path.exists(pythonw):
+            self.skipTest("pythonw.exe introuvable")
+        script = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                              "bot_ecoute.py")
+        env = {k: v for k, v in os.environ.items()
+               if k not in ("TELEGRAM_BOT_TOKEN", "HUB_DEALS_CODE_INVITATION")}
+        with tempfile.TemporaryDirectory() as dossier:
+            code_retour = subprocess.run([pythonw, script], cwd=dossier, env=env,
+                                         timeout=60).returncode
+            with open(os.path.join(dossier, "bot_ecoute_log.txt"), encoding="utf-8") as f:
+                journal = f.read()
+        self.assertEqual(code_retour, 1)
+        self.assertIn("ARRET", journal)
+        self.assertIn("TELEGRAM_BOT_TOKEN", journal)
+
+    def test_le_bloc_principal_installe_la_journalisation(self):
+        import inspect
+        bloc = inspect.getsource(bot_ecoute).split('if __name__ == "__main__":')[1]
+        self.assertIn("sys.excepthook = journaliser_plantage", bloc)
+        self.assertIn("timeout=60", bloc)
+
+
 if __name__ == "__main__":
     unittest.main()
