@@ -170,5 +170,117 @@ class TestMessageAbonne(unittest.TestCase):
             self.assertLessEqual(len(m), hub_deals_db.LIMITE_TELEGRAM)
 
 
+class TestNotifierAbonnes(unittest.TestCase):
+    def setUp(self):
+        self.conn = _base()
+        self._marker = hub_deals_db.TRAVELPAYOUTS_MARKER
+        hub_deals_db.TRAVELPAYOUTS_MARKER = None
+        villes = sorted(abonnes.NOMS_AFFICHES)
+        self.v1, self.v2 = villes[0], villes[1]
+        self.lignes = []
+        self.envois = []
+        self.pauses = []
+        self.groupes = [[_anomalie(self.v1)]]
+
+    def tearDown(self):
+        hub_deals_db.TRAVELPAYOUTS_MARKER = self._marker
+        self.conn.close()
+
+    def _abonne(self, chat_id, ville):
+        abonnes.inscrire(self.conn, chat_id, "x", T0)
+        abonnes.choisir_ville(self.conn, chat_id, ville, T0)
+
+    def _notifier(self, reponses=None, **kw):
+        """reponses : chat_id -> liste de statuts renvoyes dans l'ordre."""
+        reponses = reponses or {}
+
+        def envoyer(chat_id, message):
+            self.envois.append((chat_id, message))
+            file = reponses.get(chat_id)
+            return file.pop(0) if file else ("ok", None)
+
+        return abonnes.notifier_abonnes(
+            self.conn, self.groupes, envoyer, self.lignes.append,
+            dormir=self.pauses.append, **kw)
+
+    def test_seuls_les_abonnes_de_la_ville_recoivent(self):
+        self._abonne(1, self.v1)
+        self._abonne(2, self.v2)
+        compte = self._notifier()
+        self.assertEqual([c for c, _ in self.envois], [1])
+        self.assertEqual(compte["envoyes"], 1)
+        self.assertEqual(compte["sans_affaire"], 1)
+
+    def test_le_proprietaire_n_est_pas_servi_en_double(self):
+        self._abonne(1, self.v1)
+        self._abonne(2, self.v1)
+        self._notifier(exclure_chat_id="2")
+        self.assertEqual([c for c, _ in self.envois], [1])
+
+    def test_403_desactive_l_abonne(self):
+        self._abonne(1, self.v1)
+        compte = self._notifier({1: [("bloque", None)]})
+        self.assertEqual(compte["bloques"], 1)
+        a = abonnes.trouver(self.conn, 1)
+        self.assertIs(a["actif"], False)
+        self.assertEqual(a["motif_inactif"], "bloque")
+
+    def test_429_attend_puis_un_seul_nouvel_essai(self):
+        self._abonne(1, self.v1)
+        compte = self._notifier({1: [("trop_vite", 7), ("trop_vite", 7)]})
+        self.assertEqual(len(self.envois), 2)
+        self.assertIn(7, self.pauses)
+        self.assertEqual(compte["echecs"], ["trop de requetes"])
+
+    def test_429_puis_succes(self):
+        self._abonne(1, self.v1)
+        compte = self._notifier({1: [("trop_vite", 3), ("ok", None)]})
+        self.assertEqual(compte["envoyes"], 1)
+        self.assertEqual(compte["echecs"], [])
+
+    def test_un_echec_n_arrete_pas_les_suivants(self):
+        self._abonne(1, self.v1)
+        self._abonne(2, self.v1)
+        compte = self._notifier({1: [("echec", "HTTP 400")]})
+        self.assertEqual([c for c, _ in self.envois], [1, 2])
+        self.assertEqual(compte["envoyes"], 1)
+        self.assertEqual(compte["echecs"], ["HTTP 400"])
+
+    def test_une_exception_inattendue_n_arrete_pas_les_suivants(self):
+        self._abonne(1, self.v1)
+        self._abonne(2, self.v1)
+
+        def envoyer(chat_id, message):
+            if chat_id == 1:
+                raise RuntimeError("panne")
+            self.envois.append((chat_id, message))
+            return ("ok", None)
+
+        compte = abonnes.notifier_abonnes(self.conn, self.groupes, envoyer,
+                                          self.lignes.append, dormir=self.pauses.append)
+        self.assertEqual([c for c, _ in self.envois], [2])
+        self.assertEqual(len(compte["echecs"]), 1)
+
+    def test_pause_entre_deux_envois(self):
+        self._abonne(1, self.v1)
+        self._abonne(2, self.v1)
+        self._notifier()
+        self.assertIn(0.05, self.pauses)
+
+    def test_compte_rendu_exact(self):
+        self._abonne(1, self.v1)
+        self._abonne(2, self.v1)
+        self._abonne(3, self.v1)
+        self._abonne(4, self.v2)
+        self._notifier({2: [("bloque", None)], 3: [("echec", "HTTP 400")]})
+        self.assertEqual(
+            self.lignes,
+            ["Abonnes : 1/3 envoye(s), 1 bloque(s), 1 echec(s) (HTTP 400), 1 sans affaire."])
+
+    def test_compte_rendu_sans_abonne(self):
+        self._notifier()
+        self.assertEqual(self.lignes, ["Abonnes : aucun abonne a servir."])
+
+
 if __name__ == "__main__":
     unittest.main()
