@@ -2,6 +2,19 @@
 
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Projet personnel sans versionnage sémantique — entrées datées.
 
+## 2026-09-15
+
+### Ajouté
+- **Bot multi-abonnés, en test privé.** Inscription par lien d'invitation, choix de la ville de
+  départ par boutons, `/ville`, `/stop`. Chaque abonné reçoit uniquement les affaires de sa
+  ville, avec la mention « prix repéré, à vérifier » (règle Travelpayouts contre les remises
+  trompeuses) ; le propriétaire reçoit toujours le message complet, en premier. Bot bloqué →
+  abonné désactivé ; HTTP 429 → un seul nouvel essai ; compte rendu exact au journal.
+  Programme d'écoute permanent `bot_ecoute.py` (tâche « Bot vols - ecoute »), alerte au
+  propriétaire s'il ne tourne plus.
+- **Liens affiliés.** Les liens Aviasales portent `TRAVELPAYOUTS_MARKER` et une étiquette par
+  destinataire (ville ou `proprietaire`). Aucun lien n'en portait jusqu'ici.
+
 ## 2026-09-13
 
 ### Modifié

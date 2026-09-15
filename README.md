@@ -64,9 +64,12 @@ travaille toujours sur les mêmes valeurs qu'avant.
 | `anomaly_detection.py` | Logique partagée de détection d'anomalie (moyenne et écart-type historiques, z-score avec repli en pourcentage), utilisée par les deux scripts ci-dessous. |
 | `detect_anomalies.py` | Outil CLI d'analyse/diagnostic — relit la base et affiche les comparaisons, sans notifier. |
 | `recherche.py` | Recherche de billet à la demande : interroger soi-même une route, et mettre une destination sous surveillance du relevé quotidien. |
+| `abonnes.py` | Abonnés du bot (test privé) : inscriptions, filtrage des affaires par ville, message d'abonné, envoi, témoin d'écoute. Sans réseau. |
+| `bot_ecoute.py` | Programme d'écoute permanent du bot : commandes `/start`, `/ville`, `/stop`. Seul lecteur de `getUpdates`. |
+| `taches/` | Définition XML et script d'installation de la tâche planifiée « Bot vols - ecoute ». |
 | `test_travelpayouts.py` | Script de test brut de l'API Travelpayouts. |
 | `hub_deals_AUDIT.md` | Journal d'audit détaillé du projet (historique des décisions et correctifs). |
-| `flight_deals.db`, `flight_deals_log.txt`, `destinations_perso.json` | Générés à l'exécution — ignorés par git. |
+| `flight_deals.db`, `flight_deals_log.txt`, `bot_ecoute_log.txt`, `destinations_perso.json` | Générés à l'exécution — ignorés par git. |
 
 ## Installation
 
@@ -116,6 +119,29 @@ python recherche.py --oublier BKK
 
 Les destinations surveillées sont stockées dans `destinations_perso.json` (local, non versionné),
 15 au maximum. Une recherche n'écrit jamais dans la base.
+
+## Bot multi-abonnés (test privé)
+
+Des invités s'abonnent à `@ianniv_vols_bot` avec un lien
+`https://t.me/ianniv_vols_bot?start=<CODE>`, choisissent leur ville de départ et reçoivent
+chaque jour les affaires de cette ville. Le propriétaire (`TELEGRAM_CHAT_ID`) continue de
+recevoir le message complet, envoyé en premier.
+
+| Variable (portée User) | Rôle |
+|---|---|
+| `HUB_DEALS_CODE_INVITATION` | code du lien d'invitation, 12 à 64 caractères `A-Z a-z 0-9 _ -`. Absent : inscriptions fermées |
+| `TRAVELPAYOUTS_MARKER` | identifiant d'affilié ajouté aux liens. Absent : liens sans affiliation |
+
+Commandes : `/start` (avec le code la première fois), `/ville`, `/stop`. Plafond :
+`abonnes.PLAFOND_ABONNES` abonnés actifs.
+
+`bot_ecoute.py` tourne en permanence (tâche « Bot vols - ecoute », ouverture de session,
+`pythonw`) et journalise dans `bot_ecoute_log.txt`. C'est le **seul** lecteur de `getUpdates`.
+S'il ne tourne plus, le relevé suivant envoie une alerte au propriétaire.
+
+Installation de la tâche (UAC à valider) :
+`Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','C:\Users\Dell\hub_deals\taches\installer_bot_ecoute.ps1'`
+puis lire `%TEMP%\installer_bot_ecoute.txt`.
 
 ## Sauvegardes
 

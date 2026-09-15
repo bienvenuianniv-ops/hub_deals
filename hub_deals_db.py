@@ -42,6 +42,10 @@ LOG_PATH = "flight_deals_log.txt"
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
+# Identifiant d'affilie Travelpayouts. Absent : liens sans parametres
+# affilies (comportement d'avant le 2026-09-15), jamais de blocage.
+TRAVELPAYOUTS_MARKER = os.environ.get("TRAVELPAYOUTS_MARKER")
+
 LIMITE_TELEGRAM = 4096  # plafond impose par l'API Telegram sur sendMessage.
                         # Au-dela : HTTP 400 « message is too long », et le
                         # message entier est perdu -- pas tronque.
@@ -345,6 +349,26 @@ def construire_lien(origin: str, destination: str, departure_at: str) -> str:
         return ""
 
 
+def url_aviasales(chemin: str, etiquette: str) -> str:
+    """
+    Lien complet vers Aviasales, avec l'identifiant d'affilie et une
+    etiquette (SubID) qui separe les clics par destinataire dans le
+    tableau de bord Travelpayouts : une ville par abonne, 'proprietaire'
+    pour le message complet.
+
+    Source de la syntaxe : aide Travelpayouts « ID and SubID (Affiliate
+    marker and additional marker) » et « Aviasales affiliate links »
+    (extraits lus le 2026-09-15, pages elles-memes en 403) : le lien porte
+    marker=<ID>, et le SubID suit l'ID apres un point ; lettres latines,
+    chiffres et _ uniquement. A confirmer par un clic reel visible dans le
+    tableau de bord avec son etiquette.
+    """
+    url = f"https://www.aviasales.com{chemin}"
+    if not TRAVELPAYOUTS_MARKER:
+        return url
+    return f"{url}?marker={TRAVELPAYOUTS_MARKER}.{etiquette}"
+
+
 def enregistrer_prix(conn: sqlite3.Connection, hub_iata: str, dest_iata: str,
                      offre: dict, date_collecte: str, dest_nom: str = None) -> int:
     """
@@ -600,7 +624,7 @@ def journaliser_message(message: str, entete: str) -> None:
     log("--- fin du message ---")
 
 
-def decouper_message(blocs: list, entete: str) -> list:
+def decouper_message(blocs: list, entete: str, pied: str = "") -> list:
     """Repartit des blocs de texte en messages respectant LIMITE_TELEGRAM.
 
     Telegram refuse tout sendMessage de plus de 4096 caracteres avec un
@@ -615,6 +639,10 @@ def decouper_message(blocs: list, entete: str) -> list:
     L'entete est repete sur chaque morceau, suivi de « (i/n) » des qu'il
     y en a plusieurs. Un message unique n'est pas numerote : « (1/1) »
     n'apprend rien.
+
+    Un pied (mention a repeter sous chaque morceau) peut etre fourni : sa
+    place est retiree du budget avant la repartition, sinon il ferait
+    deborder les morceaux pleins.
     """
     if not blocs:
         return []
@@ -622,6 +650,8 @@ def decouper_message(blocs: list, entete: str) -> list:
     # marge pour le suffixe « (12/12) » ajoute apres coup a l'entete
     RESERVE_NUMEROTATION = 16
     budget = LIMITE_TELEGRAM - len(entete) - RESERVE_NUMEROTATION
+    if pied:
+        budget -= len(pied) + 1  # +1 pour le "\n" qui le precede
 
     groupes = []
     courant = []
@@ -639,10 +669,60 @@ def decouper_message(blocs: list, entete: str) -> list:
         groupes.append(courant)
 
     nb = len(groupes)
+    suffixe = f"\n{pied}" if pied else ""
     return [
-        "\n".join([entete if nb == 1 else f"{entete} ({i}/{nb})"] + groupe)
+        "\n".join([entete if nb == 1 else f"{entete} ({i}/{nb})"] + groupe) + suffixe
         for i, groupe in enumerate(groupes, start=1)
     ]
+
+
+def envoyer_telegram_a(chat_id, message: str, journaliser: bool = True) -> tuple:
+    """Envoie un message a un destinataire quelconque et renvoie un statut
+    que l'appelant peut exploiter : ('ok', None), ('bloque', None) sur 403
+    (l'abonne a bloque le bot), ('trop_vite', secondes) sur 429, ou
+    ('echec', raison courte).
+
+    journaliser=False : le corps n'est pas recopie au journal (messages
+    d'abonnes). Les erreurs, elles, sont toujours journalisees.
+    """
+    if not TELEGRAM_BOT_TOKEN or not chat_id:
+        if journaliser:
+            journaliser_message(
+                message, "message NON envoye (Telegram non configure)")
+        return ("echec", "non configure")
+
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    try:
+        reponse = requests.post(url, data={
+            "chat_id": chat_id,
+            "text": message,
+            "parse_mode": "HTML",
+        }, timeout=15)
+    except requests.exceptions.RequestException as e:
+        log(f"   -> ERREUR envoi Telegram : {e}")
+        if journaliser:
+            journaliser_message(message, "message Telegram NON parti (erreur reseau)")
+        return ("echec", "reseau")
+
+    if reponse.status_code == 403:
+        return ("bloque", None)
+
+    if reponse.status_code == 429:
+        try:
+            delai = int(json.loads(reponse.text)["parameters"]["retry_after"])
+        except (ValueError, KeyError, TypeError):
+            delai = 1
+        return ("trop_vite", delai)
+
+    if reponse.status_code != 200:
+        log(f"   -> ECHEC Telegram : HTTP {reponse.status_code} {reponse.text[:200]}")
+        if journaliser:
+            journaliser_message(message, "message Telegram REFUSE")
+        return ("echec", f"HTTP {reponse.status_code}")
+
+    if journaliser:
+        journaliser_message(message, "message Telegram envoye")
+    return ("ok", None)
 
 
 def envoyer_telegram(message: str) -> bool:
@@ -664,26 +744,14 @@ def envoyer_telegram(message: str) -> bool:
         journaliser_message(
             message, "message NON envoye (Telegram non configure)")
         return False
-
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    try:
-        reponse = requests.post(url, data={
-            "chat_id": TELEGRAM_CHAT_ID,
-            "text": message,
-            "parse_mode": "HTML",
-        }, timeout=15)
-    except requests.exceptions.RequestException as e:
-        log(f"   -> ERREUR envoi Telegram : {e}")
-        journaliser_message(message, "message Telegram NON parti (erreur reseau)")
-        return False
-
-    if reponse.status_code != 200:
-        log(f"   -> ECHEC Telegram : HTTP {reponse.status_code} {reponse.text[:200]}")
+    statut, detail = envoyer_telegram_a(TELEGRAM_CHAT_ID, message)
+    if statut in ("bloque", "trop_vite"):
+        # le proprietaire ne bloque pas son propre bot : ces cas restent
+        # des echecs, et doivent se lire comme tels au journal
+        code = 403 if statut == "bloque" else 429
+        log(f"   -> ECHEC Telegram : HTTP {code} ({statut})")
         journaliser_message(message, "message Telegram REFUSE")
-        return False
-
-    journaliser_message(message, "message Telegram envoye")
-    return True
+    return statut == "ok"
 
 
 def sauvegarder_et_alerter(conn: sqlite3.Connection,
@@ -778,7 +846,7 @@ def construire_bloc(groupe: list) -> str:
     possible -- une ville a l'historique plus court peut rester seule.
     """
     premier = groupe[0]
-    lien = f"https://www.aviasales.com{premier['lien']}"
+    lien = url_aviasales(premier["lien"], "proprietaire")
 
     if len(groupe) == 1:
         a = premier
@@ -810,6 +878,46 @@ def construire_bloc(groupe: list) -> str:
     return "\n".join(lignes)
 
 
+def notifier_abonnes_sans_risque(conn, groupes: list) -> None:
+    """Envoie aux abonnes du bot les affaires de leur ville.
+
+    Appelee APRES le message du proprietaire. Ne leve jamais : import DANS
+    le try, comme pour la sauvegarde -- un abonnes.py absent ou casse ne
+    doit pas faire echouer la fin du releve.
+    """
+    try:
+        import abonnes
+        abonnes.init_abonnes(conn)
+        abonnes.notifier_abonnes(
+            conn, groupes,
+            envoyer=lambda chat_id, message: envoyer_telegram_a(
+                chat_id, message, journaliser=False),
+            log=log,
+            exclure_chat_id=TELEGRAM_CHAT_ID,
+        )
+    except Exception as e:
+        log(f"   -> envoi aux abonnes impossible : {e}")
+
+
+def verifier_ecoute_et_alerter(conn) -> None:
+    """Previent le proprietaire si bot_ecoute.py ne tourne plus : sinon un
+    invite tape /start dans le vide pendant des jours sans que personne le
+    sache. Ne leve jamais."""
+    try:
+        import abonnes
+        abonnes.init_abonnes(conn)
+        if abonnes.ecoute_muette(conn, abonnes.maintenant()):
+            envoyer_telegram(
+                "<b>Probleme technique -- l'ecoute du bot est arretee</b>\n\n"
+                "Les invites qui tapent /start n'ont pas de reponse.\n\n"
+                "A verifier : tache planifiee « Bot vols - ecoute » et "
+                "bot_ecoute_log.txt"
+            )
+            log("   -> ALERTE ecoute du bot arretee envoyee")
+    except Exception as e:
+        log(f"   -> controle de l'ecoute du bot impossible : {e}")
+
+
 def verifier_et_notifier_anomalies(conn: sqlite3.Connection, date_collecte: str) -> None:
     """Compare le releve du jour a la moyenne historique de chaque
     destination (logique centralisee dans anomaly_detection.py), et
@@ -837,6 +945,8 @@ def verifier_et_notifier_anomalies(conn: sqlite3.Connection, date_collecte: str)
 
     groupes = grouper_anomalies(anomalies)
     log(f"{len(anomalies)} anomalie(s) regroupee(s) en {len(groupes)} affaire(s).")
+    if not TRAVELPAYOUTS_MARKER:
+        log("   -> liens sans identifiant d'affilie (TRAVELPAYOUTS_MARKER absent)")
 
     entete = f"<b>{len(groupes)} bonne(s) affaire(s) detectee(s) !</b>"
     blocs = [construire_bloc(g) for g in groupes]
@@ -856,6 +966,8 @@ def verifier_et_notifier_anomalies(conn: sqlite3.Connection, date_collecte: str)
     else:
         log(f"ECHEC partiel : {partis}/{len(morceaux)} message(s) partis "
             f"pour {len(anomalies)} anomalie(s).")
+
+    notifier_abonnes_sans_risque(conn, groupes)
 
 
 if __name__ == "__main__":
@@ -878,7 +990,8 @@ if __name__ == "__main__":
     log("Attente de 30 secondes pour laisser le reseau se stabiliser...")
     time.sleep(30)
 
-    conn = sqlite3.connect(DB_PATH)
+    # timeout : bot_ecoute.py ecrit dans la meme base (inscriptions, temoin)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     init_db(conn)
 
     total_routes_trouvees = 0
@@ -934,6 +1047,10 @@ if __name__ == "__main__":
     # git ou de reseau ne doit pas le faire echouer -- mais elle doit
     # se voir, d'ou la notification en cas d'echec.
     sauvegarder_et_alerter(conn)
+
+    # en fin de releve : l'ecoute lancee a la meme ouverture de session a eu
+    # le temps de rafraichir son temoin
+    verifier_ecoute_et_alerter(conn)
 
     log("=== Fin d'execution ===")
 
