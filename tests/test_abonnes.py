@@ -282,5 +282,68 @@ class TestNotifierAbonnes(unittest.TestCase):
         self.assertEqual(self.lignes, ["Abonnes : aucun abonne a servir."])
 
 
+class TestReleveNotifieLesAbonnes(unittest.TestCase):
+    """Le message du proprietaire part en premier, et rien cote abonnes ne
+    peut l'empecher ni interrompre le releve."""
+
+    def setUp(self):
+        self.ordre = []
+        self.lignes = []
+        self._sauve = {n: getattr(hub_deals_db, n) for n in (
+            "log", "envoyer_telegram", "envoyer_telegram_a", "mesurer_rabattements",
+            "detecter_anomalies", "TELEGRAM_CHAT_ID", "TRAVELPAYOUTS_MARKER")}
+        hub_deals_db.log = self.lignes.append
+        hub_deals_db.TELEGRAM_CHAT_ID = "999"
+        hub_deals_db.TRAVELPAYOUTS_MARKER = None
+        hub_deals_db.mesurer_rabattements = lambda couples: {}
+        self.ville = sorted(abonnes.NOMS_AFFICHES)[0]
+        hub_deals_db.detecter_anomalies = (
+            lambda conn, date_collecte=None: [_anomalie(self.ville, mesure=None)])
+        hub_deals_db.envoyer_telegram = lambda msg: self.ordre.append("proprietaire") or True
+
+        def envoyer_a(chat_id, message, journaliser=True):
+            self.ordre.append(chat_id)
+            return ("ok", None)
+        hub_deals_db.envoyer_telegram_a = envoyer_a
+
+        self.conn = _base()
+        for chat_id in (1, 999):
+            abonnes.inscrire(self.conn, chat_id, "x", T0)
+            abonnes.choisir_ville(self.conn, chat_id, self.ville, T0)
+
+    def tearDown(self):
+        for n, v in self._sauve.items():
+            setattr(hub_deals_db, n, v)
+        self.conn.close()
+
+    def test_proprietaire_d_abord_puis_abonnes_sans_doublon(self):
+        hub_deals_db.verifier_et_notifier_anomalies(self.conn, "2026-09-15")
+        self.assertEqual(self.ordre, ["proprietaire", 1])
+
+    def test_une_panne_cote_abonnes_n_interrompt_rien(self):
+        def exploser(*a, **k):
+            raise RuntimeError("panne abonnes")
+        hub_deals_db.envoyer_telegram_a = exploser
+        original = abonnes.abonnes_a_servir
+        abonnes.abonnes_a_servir = exploser
+        try:
+            hub_deals_db.verifier_et_notifier_anomalies(self.conn, "2026-09-15")
+        finally:
+            abonnes.abonnes_a_servir = original
+        self.assertEqual(self.ordre, ["proprietaire"])
+        self.assertIn("envoi aux abonnes impossible", "\n".join(self.lignes))
+
+    def test_une_base_sans_table_abonnes_ne_casse_pas(self):
+        conn = sqlite3.connect(":memory:")
+        hub_deals_db.verifier_et_notifier_anomalies(conn, "2026-09-15")
+        self.assertEqual(self.ordre, ["proprietaire"])
+        self.assertIn("Abonnes : aucun abonne a servir.", self.lignes)
+
+    def test_le_releve_attend_la_base_occupee_par_l_ecoute(self):
+        import inspect
+        bloc = inspect.getsource(hub_deals_db).split('if __name__ == "__main__":')[1]
+        self.assertIn("sqlite3.connect(DB_PATH, timeout=30)", bloc)
+
+
 if __name__ == "__main__":
     unittest.main()

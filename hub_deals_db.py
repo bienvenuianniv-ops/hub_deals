@@ -878,6 +878,27 @@ def construire_bloc(groupe: list) -> str:
     return "\n".join(lignes)
 
 
+def notifier_abonnes_sans_risque(conn, groupes: list) -> None:
+    """Envoie aux abonnes du bot les affaires de leur ville.
+
+    Appelee APRES le message du proprietaire. Ne leve jamais : import DANS
+    le try, comme pour la sauvegarde -- un abonnes.py absent ou casse ne
+    doit pas faire echouer la fin du releve.
+    """
+    try:
+        import abonnes
+        abonnes.init_abonnes(conn)
+        abonnes.notifier_abonnes(
+            conn, groupes,
+            envoyer=lambda chat_id, message: envoyer_telegram_a(
+                chat_id, message, journaliser=False),
+            log=log,
+            exclure_chat_id=TELEGRAM_CHAT_ID,
+        )
+    except Exception as e:
+        log(f"   -> envoi aux abonnes impossible : {e}")
+
+
 def verifier_et_notifier_anomalies(conn: sqlite3.Connection, date_collecte: str) -> None:
     """Compare le releve du jour a la moyenne historique de chaque
     destination (logique centralisee dans anomaly_detection.py), et
@@ -927,6 +948,8 @@ def verifier_et_notifier_anomalies(conn: sqlite3.Connection, date_collecte: str)
         log(f"ECHEC partiel : {partis}/{len(morceaux)} message(s) partis "
             f"pour {len(anomalies)} anomalie(s).")
 
+    notifier_abonnes_sans_risque(conn, groupes)
+
 
 if __name__ == "__main__":
     import sys
@@ -948,7 +971,8 @@ if __name__ == "__main__":
     log("Attente de 30 secondes pour laisser le reseau se stabiliser...")
     time.sleep(30)
 
-    conn = sqlite3.connect(DB_PATH)
+    # timeout : bot_ecoute.py ecrit dans la meme base (inscriptions, temoin)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     init_db(conn)
 
     total_routes_trouvees = 0
