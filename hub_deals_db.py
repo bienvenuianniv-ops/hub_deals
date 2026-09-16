@@ -46,6 +46,15 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 # affilies (comportement d'avant le 2026-09-15), jamais de blocage.
 TRAVELPAYOUTS_MARKER = os.environ.get("TRAVELPAYOUTS_MARKER")
 
+# Identifiant du projet Travelpayouts (« trs », parametre source= dans
+# l'adresse du tableau de bord). Absent : liens directs, jamais de blocage.
+TRAVELPAYOUTS_PROJET = os.environ.get("TRAVELPAYOUTS_PROJET")
+
+# Liens courts du releve en cours, (chemin, etiquette) -> URL courte.
+# Rempli par preparer_liens_courts() juste avant l'envoi des alertes.
+LIENS_COURTS: dict = {}
+LIENS_PAR_REQUETE = 10  # plafond de l'API links/v1/create
+
 LIMITE_TELEGRAM = 4096  # plafond impose par l'API Telegram sur sendMessage.
                         # Au-dela : HTTP 400 « message is too long », et le
                         # message entier est perdu -- pas tronque.
@@ -362,11 +371,85 @@ def url_aviasales(chemin: str, etiquette: str) -> str:
     marker=<ID>, et le SubID suit l'ID apres un point ; lettres latines,
     chiffres et _ uniquement. A confirmer par un clic reel visible dans le
     tableau de bord avec son etiquette.
+
+    Constat du 2026-09-16 : ce lien direct n'est PAS compte comme clic
+    (0 clic pour celui du 15/09), un lien court aviasales.tpk.ro l'est.
+    Le lien court est donc prefere des qu'il a pu etre cree.
     """
+    court = LIENS_COURTS.get((chemin, etiquette))
+    if court:
+        return court
     url = f"https://www.aviasales.com{chemin}"
     if not TRAVELPAYOUTS_MARKER:
         return url
     return f"{url}?marker={TRAVELPAYOUTS_MARKER}.{etiquette}"
+
+
+def raccourcir_liens(paires, poster=requests.post) -> dict:
+    """
+    Cree les liens courts Travelpayouts pour des paires (chemin, etiquette).
+
+    API documentee « API for Travelpayouts partner links » (lue le
+    2026-09-16) : POST links/v1/create, au plus 10 liens par requete. Un
+    lien peut echouer sous une reponse globale 200/success : on lit donc le
+    code de CHAQUE lien. En-tete X-Access-Token prouve le 2026-09-16 (token
+    bidon -> 401, projet bidon -> 400 « invalid traffic source »).
+
+    Ne leve jamais : toute paire non convertie garde son lien direct.
+    """
+    if not (TRAVELPAYOUTS_PROJET and TRAVELPAYOUTS_MARKER):
+        return {}
+    uniques = list(dict.fromkeys(paires))
+    courts = {}
+    for debut in range(0, len(uniques), LIENS_PAR_REQUETE):
+        lot = uniques[debut:debut + LIENS_PAR_REQUETE]
+        corps = {
+            "trs": int(TRAVELPAYOUTS_PROJET),
+            "marker": int(TRAVELPAYOUTS_MARKER),
+            "shorten": True,
+            "links": [{"url": f"https://www.aviasales.com{chemin}", "sub_id": etiquette}
+                      for chemin, etiquette in lot],
+        }
+        try:
+            r = poster(f"{BASE_URL}/links/v1/create", json=corps,
+                       headers={"X-Access-Token": TOKEN}, timeout=20)
+            if r.status_code != 200:
+                log(f"   -> liens courts refuses : HTTP {r.status_code} {r.text[:200]}")
+                continue
+            resultats = r.json()["result"]["links"]
+        except Exception as e:
+            log(f"   -> liens courts impossibles : {e}")
+            continue
+        # association par position : sans compte exact, on ne saurait pas
+        # quel lien court revient a quel destinataire
+        if len(resultats) != len(lot):
+            log(f"   -> liens courts ignores : {len(resultats)} recus pour {len(lot)} demandes")
+            continue
+        for paire, res in zip(lot, resultats):
+            if res.get("code") == "success" and res.get("partner_url"):
+                courts[paire] = res["partner_url"]
+            else:
+                log(f"   -> lien court non cree ({paire[1]}) : {res.get('message')}")
+    return courts
+
+
+def preparer_liens_courts(groupes: list) -> None:
+    """Remplit LIENS_COURTS pour les liens que le releve va envoyer : celui
+    du proprietaire (premier de chaque groupe) et celui de chaque ville
+    (messages des abonnes). Ne leve jamais."""
+    global LIENS_COURTS
+    LIENS_COURTS = {}
+    paires = []
+    for groupe in groupes:
+        paires.append((groupe[0]["lien"], "proprietaire"))
+        paires.extend((a["lien"], a["ville_depart"].lower()) for a in groupe)
+    try:
+        LIENS_COURTS = raccourcir_liens(paires)
+    except Exception as e:
+        log(f"   -> liens courts impossibles : {e}")
+        return
+    if TRAVELPAYOUTS_PROJET and TRAVELPAYOUTS_MARKER:
+        log(f"Liens courts : {len(LIENS_COURTS)}/{len(set(paires))} cree(s).")
 
 
 def enregistrer_prix(conn: sqlite3.Connection, hub_iata: str, dest_iata: str,
@@ -947,6 +1030,8 @@ def verifier_et_notifier_anomalies(conn: sqlite3.Connection, date_collecte: str)
     log(f"{len(anomalies)} anomalie(s) regroupee(s) en {len(groupes)} affaire(s).")
     if not TRAVELPAYOUTS_MARKER:
         log("   -> liens sans identifiant d'affilie (TRAVELPAYOUTS_MARKER absent)")
+
+    preparer_liens_courts(groupes)
 
     entete = f"<b>{len(groupes)} bonne(s) affaire(s) detectee(s) !</b>"
     blocs = [construire_bloc(g) for g in groupes]
