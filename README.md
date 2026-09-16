@@ -131,6 +131,7 @@ recevoir le message complet, envoyé en premier.
 |---|---|
 | `HUB_DEALS_CODE_INVITATION` | code du lien d'invitation, 12 à 64 caractères `A-Z a-z 0-9 _ -`. Absent : inscriptions fermées |
 | `TRAVELPAYOUTS_MARKER` | identifiant d'affilié ajouté aux liens. Absent : liens sans affiliation |
+| `TRAVELPAYOUTS_PROJET` | ID du projet Travelpayouts (`source=` dans l'adresse du tableau de bord) : liens courts, seuls comptés comme clics. Absent : liens directs |
 
 Commandes : `/start` (avec le code la première fois), `/ville`, `/stop`. Plafond :
 `abonnes.PLAFOND_ABONNES` abonnés actifs.

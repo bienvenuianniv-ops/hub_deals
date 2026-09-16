@@ -8,6 +8,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import hub_deals_db
 
+# jamais d'appel reel a l'API des liens courts depuis les tests, meme
+# quand TRAVELPAYOUTS_PROJET est pose sur la machine
+hub_deals_db.TRAVELPAYOUTS_PROJET = None
+
 
 class TestUrlAviasales(unittest.TestCase):
     """Sans identifiant d'affilie, aucun clic ne rapporte ni ne se mesure

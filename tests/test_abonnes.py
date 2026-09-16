@@ -10,6 +10,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import abonnes
 import hub_deals_db
 
+# jamais d'appel reel a l'API des liens courts depuis les tests, meme
+# quand TRAVELPAYOUTS_PROJET est pose sur la machine
+hub_deals_db.TRAVELPAYOUTS_PROJET = None
+
 T0 = "2026-09-15T12:00:00+00:00"
 T1 = "2026-09-15T12:05:00+00:00"
 

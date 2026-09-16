@@ -2,6 +2,16 @@
 
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Projet personnel sans versionnage sémantique — entrées datées.
 
+## 2026-09-16
+
+### Corrigé
+- **Les clics sur les liens affiliés n'étaient pas comptés.** Un lien direct
+  `aviasales.com?marker=...` n'apparaît pas dans les statistiques Travelpayouts (0 clic pour
+  celui du 15/09), un lien court `aviasales.tpk.ro` si (1 clic le jour même). Au moment de
+  l'alerte, les liens sont convertis par l'API `links/v1/create` (lots de 10, résultat lu
+  lien par lien) avec l'étiquette du destinataire en SubID. Nouvelle variable
+  `TRAVELPAYOUTS_PROJET` (ID du projet). Échec ou variable absente → lien direct, l'alerte part.
+
 ## 2026-09-15
 
 ### Ajouté
