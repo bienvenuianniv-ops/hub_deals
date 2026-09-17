@@ -865,7 +865,9 @@ def sauvegarder_et_alerter(conn: sqlite3.Connection,
         ok = False
 
     if not ok:
-        envoyer_telegram(
+        # le booleen compte : sans lui le journal affirmait « envoyee »
+        # juste sous « message Telegram NON parti » (reseau coupe, 17/09)
+        envoye = envoyer_telegram(
             "<b>Probleme technique -- sauvegarde impossible</b>\n\n"
             "Le releve du jour est bien enregistre, mais la sauvegarde "
             "hors machine a echoue.\n\n"
@@ -873,7 +875,8 @@ def sauvegarder_et_alerter(conn: sqlite3.Connection,
             "disque tant que ce n'est pas repare.\n\n"
             "A verifier : git -C .sauvegardes status"
         )
-        log("   -> ALERTE sauvegarde envoyee")
+        log("   -> ALERTE sauvegarde envoyee" if envoye
+            else "   -> ALERTE sauvegarde NON envoyee")
 
     return ok
 

@@ -2,6 +2,13 @@
 
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Projet personnel sans versionnage sémantique — entrées datées.
 
+## 2026-09-17
+
+### Corrigé
+- **Le journal annonçait l'alerte de sauvegarde « envoyee » même quand Telegram était
+  injoignable.** Constaté le 17/09 (réseau coupé après le relevé) : « message Telegram NON
+  parti » puis « ALERTE sauvegarde envoyee ». Le résultat de l'envoi est désormais lu.
+
 ## 2026-09-16
 
 ### Corrigé

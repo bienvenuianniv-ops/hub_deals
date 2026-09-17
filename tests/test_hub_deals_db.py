@@ -936,6 +936,30 @@ class TestAlerteSauvegarde(unittest.TestCase):
         self.assertFalse(ok)
         self.assertEqual(len(self.envois), 1)
 
+    def test_le_journal_ne_dit_pas_envoyee_quand_telegram_echoue(self):
+        """Le 17/09, reseau coupe : « message Telegram NON parti » puis
+        « ALERTE sauvegarde envoyee » deux lignes plus bas. Le journal
+        se contredisait et l'alerte etait comptee comme recue."""
+        lignes = []
+        hub_deals_db.log = lignes.append
+        hub_deals_db.envoyer_telegram = lambda msg: False
+
+        hub_deals_db.sauvegarder_et_alerter(
+            self.conn, sauver=lambda conn, dossier, journaliser=None: False)
+
+        self.assertNotIn("   -> ALERTE sauvegarde envoyee", lignes)
+        self.assertIn("   -> ALERTE sauvegarde NON envoyee", lignes)
+
+    def test_le_journal_dit_envoyee_quand_telegram_accepte(self):
+        lignes = []
+        hub_deals_db.log = lignes.append
+        hub_deals_db.envoyer_telegram = lambda msg: True
+
+        hub_deals_db.sauvegarder_et_alerter(
+            self.conn, sauver=lambda conn, dossier, journaliser=None: False)
+
+        self.assertIn("   -> ALERTE sauvegarde envoyee", lignes)
+
     def test_le_bloc_principal_appelle_le_garde_fou(self):
         import inspect
         bloc = inspect.getsource(hub_deals_db).split(
