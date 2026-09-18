@@ -170,6 +170,32 @@ La restauration est **outillée et non documentée** : `sqlite3` n'existe pas en
 sur toutes les machines — notamment pas sur celle-ci — et une procédure qu'on découvre
 inexécutable le jour de la panne ne vaut rien. `--restaurer` refuse d'écraser un fichier existant.
 
+## Vigie externe
+
+Une tâche GitHub Actions (`.github/workflows/vigie.yml`) tourne chaque jour à 15h UTC et vérifie,
+**depuis l'extérieur**, que le relevé du portable tourne toujours. Une vigie hébergée sur le
+portable se tairait en même temps que lui : le 17/09, la machine a dormi 12 h sans que personne
+ne le sache.
+
+Elle ne lit que ce que le portable a déjà poussé : la date et le volume des commits de la branche
+`sauvegardes`. **Rien n'est modifié côté portable**, et elle n'appelle jamais l'API des prix.
+
+| Constat | Message |
+|---|---|
+| Plus de sauvegarde depuis 26 h | « plus de relevé depuis N h » |
+| Dernier relevé sous la moitié de la médiane des 10 précédents | « relevé anormalement court » |
+| Rien à signaler | **silence** — sauf le lundi, bilan d'une ligne |
+
+Le silence est donc normal. Le bilan du lundi est le signe de vie de la vigie elle-même, et si la
+vigie plante, GitHub envoie un courriel d'échec : sa panne ne peut pas être silencieuse.
+
+```bash
+python vigie.py --sans-envoi   # juger l'état sans rien envoyer
+```
+
+Secrets attendus dans le dépôt (`Settings > Secrets and variables > Actions`) :
+`TELEGRAM_BOT_TOKEN` et `TELEGRAM_CHAT_ID`.
+
 ## Tests
 
 ```
