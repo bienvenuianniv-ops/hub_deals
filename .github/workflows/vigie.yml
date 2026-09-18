@@ -2,7 +2,7 @@ name: Vigie du releve quotidien
 
 on:
   schedule:
-    - cron: "0 15 * * *"   # 15h UTC ; le releve du portable tourne a 13h UTC
+    - cron: "17 15 * * *"  # 15h17 UTC : la minute zero est la plus mise en file chez GitHub
   workflow_dispatch:        # declenchement a la main, pour verifier
 
 permissions:
