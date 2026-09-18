@@ -1,0 +1,34 @@
+name: Vigie du releve quotidien
+
+on:
+  schedule:
+    - cron: "0 15 * * *"   # 15h UTC ; le releve du portable tourne a 13h UTC
+  workflow_dispatch:        # declenchement a la main, pour verifier
+
+permissions:
+  contents: read
+
+jobs:
+  vigie:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # il faut l'historique, pas seulement la pointe
+
+      - name: Recuperer la branche des sauvegardes
+        run: git fetch origin sauvegardes:refs/remotes/origin/sauvegardes
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installer les dependances
+        run: pip install -r requirements.txt
+
+      - name: Verifier l'etat du releve
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python vigie.py

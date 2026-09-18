@@ -5,6 +5,13 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Pro
 ## 2026-09-18
 
 ### Ajouté
+- **Vigie externe du relevé quotidien** (`vigie.py` + tâche GitHub Actions). Les pannes du
+  portable — veille de 12 h, réseau coupé, coupure de courant — ne se signalaient pas : le relevé
+  prévient quand *il* échoue, mais un relevé qui ne tourne pas du tout ne prévient personne.
+  La vigie tourne hors de la machine, lit la date et le volume des sauvegardes déjà poussées
+  (rien à changer côté portable) et alerte sur Telegram au-delà de 26 h sans relevé, ou si le
+  dernier relevé fait moins de la moitié de la médiane des 10 précédents. Silence quand tout va
+  bien, bilan le lundi comme signe de vie.
 - **Le bot demande à Windows de ne pas mettre la machine en veille tant qu'il tourne.**
   Le 17/09 au soir, l'ordinateur a dormi 12 h (motif « System Idle ») malgré
   `standby-timeout-ac 0`, et le bot n'a répondu à personne pendant ce temps. Le verrou
