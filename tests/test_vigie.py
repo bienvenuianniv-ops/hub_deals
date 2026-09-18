@@ -141,5 +141,117 @@ class TestJuger(unittest.TestCase):
         self.assertEqual(len(problemes), 2)
 
 
+class TestBilanHebdo(unittest.TestCase):
+    """Sans ce signe de vie, une vigie MORTE serait indiscernable d'une
+    vigie qui n'a rien a dire -- exactement l'angle mort qu'elle corrige."""
+
+    def _releves(self, n, base=None):
+        base = base or datetime(2026, 9, 21, 13, 0, tzinfo=timezone.utc)
+        return [{"date": base - timedelta(days=i), "lignes": 940}
+                for i in range(n)]
+
+    def test_le_lundi_un_bilan_est_produit(self):
+        lundi = datetime(2026, 9, 21, 15, 0, tzinfo=timezone.utc)
+        self.assertEqual(lundi.weekday(), 0)
+
+        texte = vigie.bilan_hebdo(self._releves(7), lundi)
+
+        self.assertIsNotNone(texte)
+        self.assertIn("7", texte)
+
+    def test_les_autres_jours_rien(self):
+        mardi = datetime(2026, 9, 22, 15, 0, tzinfo=timezone.utc)
+
+        self.assertIsNone(vigie.bilan_hebdo(self._releves(7), mardi))
+
+    def test_le_bilan_ne_compte_que_les_sept_derniers_jours(self):
+        lundi = datetime(2026, 9, 21, 15, 0, tzinfo=timezone.utc)
+        vieux = [{"date": datetime(2026, 8, 1, 13, 0, tzinfo=timezone.utc),
+                  "lignes": 940}]
+
+        texte = vigie.bilan_hebdo(self._releves(3) + vieux, lundi)
+
+        self.assertIn("3", texte)
+
+    def test_un_lundi_sans_aucun_releve_le_dit(self):
+        lundi = datetime(2026, 9, 21, 15, 0, tzinfo=timezone.utc)
+
+        texte = vigie.bilan_hebdo([], lundi)
+
+        self.assertIsNotNone(texte)
+        self.assertIn("0", texte)
+
+
+class TestMain(unittest.TestCase):
+    """L'envoi et la lecture sont injectes : aucun test ne doit toucher
+    Telegram ni git (lecon du 2026-08-16 : une fonction modifiee fait
+    partir de vrais appels reseau depuis les tests d'a cote)."""
+
+    def setUp(self):
+        self.envoyes = []
+
+    def _envoyer(self, message):
+        self.envoyes.append(message)
+        return True
+
+    def _releves(self, volumes, base):
+        return [{"date": base - timedelta(hours=24 * i), "lignes": v}
+                for i, v in enumerate(volumes)]
+
+    def test_rien_a_signaler_rien_envoye(self):
+        mardi = datetime(2026, 9, 22, 15, 0, tzinfo=timezone.utc)
+
+        code = vigie.main(argv=[], releves=self._releves([940] * 11, mardi),
+                          envoyer=self._envoyer, maintenant=mardi)
+
+        self.assertEqual(code, 0)
+        self.assertEqual(self.envoyes, [])
+
+    def test_un_probleme_part_sur_telegram(self):
+        jeudi = datetime(2026, 9, 24, 15, 0, tzinfo=timezone.utc)
+        vieux = self._releves([940] * 11,
+                              datetime(2026, 9, 22, 13, 0, tzinfo=timezone.utc))
+
+        code = vigie.main(argv=[], releves=vieux, envoyer=self._envoyer,
+                          maintenant=jeudi)
+
+        self.assertEqual(code, 0)
+        self.assertEqual(len(self.envoyes), 1)
+        self.assertIn("relevé", self.envoyes[0])
+
+    def test_sans_envoi_rien_ne_part(self):
+        """Mode d'essai, pour la verification en conditions reelles."""
+        jeudi = datetime(2026, 9, 24, 15, 0, tzinfo=timezone.utc)
+        vieux = self._releves([940] * 11,
+                              datetime(2026, 9, 22, 13, 0, tzinfo=timezone.utc))
+
+        code = vigie.main(argv=["--sans-envoi"], releves=vieux,
+                          envoyer=self._envoyer, maintenant=jeudi)
+
+        self.assertEqual(code, 0)
+        self.assertEqual(self.envoyes, [])
+
+    def test_le_bilan_du_lundi_part_aussi(self):
+        lundi = datetime(2026, 9, 21, 15, 0, tzinfo=timezone.utc)
+
+        vigie.main(argv=[], releves=self._releves([940] * 11, lundi),
+                   envoyer=self._envoyer, maintenant=lundi)
+
+        self.assertEqual(len(self.envoyes), 1)
+        self.assertIn("semaine", self.envoyes[0])
+
+    def test_un_echec_d_envoi_fait_echouer_la_tache(self):
+        """Sinon la panne serait doublement silencieuse. Un code non nul
+        declenche le courriel d'echec de GitHub."""
+        jeudi = datetime(2026, 9, 24, 15, 0, tzinfo=timezone.utc)
+        vieux = self._releves([940] * 11,
+                              datetime(2026, 9, 22, 13, 0, tzinfo=timezone.utc))
+
+        code = vigie.main(argv=[], releves=vieux, envoyer=lambda m: False,
+                          maintenant=jeudi)
+
+        self.assertEqual(code, 1)
+
+
 if __name__ == "__main__":
     unittest.main()

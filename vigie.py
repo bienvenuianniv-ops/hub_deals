@@ -13,7 +13,8 @@ Spec : docs/superpowers/specs/2026-09-18-vigie-externe-design.md
 """
 
 import subprocess
-from datetime import datetime
+import sys
+from datetime import datetime, timezone
 from statistics import median
 
 BRANCHE = "origin/sauvegardes"
@@ -103,3 +104,60 @@ def juger(releves: list, maintenant: datetime,
                 "Le réseau a probablement coupé en cours de relevé. "
                 "À vérifier : les erreurs réseau dans flight_deals_log.txt.")
     return problemes
+
+
+def bilan_hebdo(releves: list, maintenant: datetime):
+    """Une ligne, le lundi : le signe de vie de la vigie elle-meme.
+
+    Rend None les autres jours. Un message quotidien de bonne sante
+    cesserait d'etre lu en une semaine (meme raisonnement que pour
+    l'alerte de sauvegarde).
+    """
+    if maintenant.weekday() != 0:
+        return None
+    recents = [r for r in releves if (maintenant - r["date"]).days < 7]
+    if not recents:
+        return ("<b>Vigie : 0 relevé la semaine passée</b>\n\n"
+                "À vérifier : la tâche « Traqueur de vols ».")
+    habituel = median([r["lignes"] for r in recents])
+    return (f"<b>Vigie : {len(recents)} relevé(s) la semaine passée</b>\n\n"
+            f"Volume médian {habituel:.0f} lignes. Rien à signaler.")
+
+
+def main(argv=None, releves=None, envoyer=None, maintenant=None) -> int:
+    """Lit l'etat, envoie ce qu'il y a a dire, rend le code de retour.
+
+    Un probleme constate n'est PAS un echec de la vigie : elle a fait son
+    travail, elle rend 0. Elle ne rend 1 que si elle n'a pas pu parler --
+    la, GitHub envoie son courriel d'echec, dernier filet.
+    """
+    argv = sys.argv[1:] if argv is None else argv
+    maintenant = maintenant or datetime.now(timezone.utc)
+    if releves is None:
+        releves = lire_releves()
+    if envoyer is None:
+        # importe ici : hub_deals_db lit l'environnement Travelpayouts au
+        # chargement, et le coeur de la vigie ne doit pas en dependre
+        import hub_deals_db
+        envoyer = hub_deals_db.envoyer_telegram
+
+    messages = juger(releves, maintenant)
+    if not messages:
+        bilan = bilan_hebdo(releves, maintenant)
+        if bilan:
+            messages.append(bilan)
+
+    for message in messages:
+        print(message)
+    if "--sans-envoi" in argv:
+        return 0
+
+    for message in messages:
+        if not envoyer(message):
+            print("ECHEC : message non envoye")
+            return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
