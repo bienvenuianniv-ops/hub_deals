@@ -2,6 +2,16 @@
 
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Projet personnel sans versionnage sémantique — entrées datées.
 
+## 2026-09-18
+
+### Ajouté
+- **Le bot demande à Windows de ne pas mettre la machine en veille tant qu'il tourne.**
+  Le 17/09 au soir, l'ordinateur a dormi 12 h (motif « System Idle ») malgré
+  `standby-timeout-ac 0`, et le bot n'a répondu à personne pendant ce temps. Le verrou
+  (`SetThreadExecutionState`) ne dépend d'aucun réglage et disparaît à l'arrêt du bot.
+  L'écran peut toujours s'éteindre ; la veille demandée à la main et la fermeture du capot
+  restent possibles. Un refus est journalisé, le bot continue d'écouter.
+
 ## 2026-09-17
 
 ### Corrigé

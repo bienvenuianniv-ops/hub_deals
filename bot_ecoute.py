@@ -252,6 +252,37 @@ def boucle(conn, token, code, appeler_fn=appeler, dormir=time.sleep,
             executer_actions(token, actions, appeler_fn)
 
 
+ES_CONTINUOUS = 0x80000000        # le verrou dure jusqu'a l'arret du process
+ES_SYSTEM_REQUIRED = 0x00000001   # la machine reste eveillee (pas l'ecran)
+
+
+def empecher_la_veille(regler=None) -> bool:
+    """Demande a Windows de ne pas s'endormir tant que le bot tourne.
+
+    Le 17/09 au soir, la machine a dormi 12 h (motif « System Idle ») malgre
+    `powercfg /change standby-timeout-ac 0` : un reglage peut etre repris par
+    l'utilitaire du constructeur ou ne pas s'appliquer sur batterie. Un verrou
+    pose par le programme lui-meme ne depend d'aucun reglage et disparait tout
+    seul a l'arret -- on ne laisse pas la machine eveillee pour rien.
+
+    N'empeche NI la veille demandee a la main, NI la fermeture du capot, NI
+    (volontairement) l'extinction de l'ecran. Renvoie False sans lever hors
+    Windows ou si l'API refuse : ecouter compte plus que dormir eveille.
+    """
+    if regler is None:  # pragma: no cover - specifique a Windows
+        import ctypes
+        regler = ctypes.windll.kernel32.SetThreadExecutionState
+    try:
+        precedent = regler(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)
+    except Exception as e:
+        log(f"Veille non bloquee ({e}) : la machine peut s'endormir.")
+        return False
+    if not precedent:
+        log("Veille non bloquee (refus de Windows) : elle peut s'endormir.")
+        return False
+    return True
+
+
 if __name__ == "__main__":
     # sous pythonw.exe, rien ne s'affiche : tout plantage doit aller au journal
     sys.excepthook = journaliser_plantage
@@ -268,4 +299,5 @@ if __name__ == "__main__":
     conn = sqlite3.connect(hub_deals_db.DB_PATH, timeout=60)
     abonnes.init_abonnes(conn)
     log("=== Demarrage de l'ecoute ===")
+    empecher_la_veille()
     boucle(conn, token, CODE_INVITATION)

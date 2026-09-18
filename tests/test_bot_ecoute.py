@@ -364,5 +364,54 @@ class TestSousPythonw(unittest.TestCase):
         self.assertIn("timeout=60", bloc)
 
 
+class TestEmpecherLaVeille(unittest.TestCase):
+    """La machine s'est endormie 12 h le 17/09 au soir (motif « System
+    Idle ») malgre `standby-timeout-ac 0` : le bot etait muet pendant ce
+    temps. Un reglage se fait ecraser, un verrou tenu par le programme
+    lui-meme tient tant que le programme tourne."""
+
+    def setUp(self):
+        self.lignes = []
+        self._log = bot_ecoute.log
+        bot_ecoute.log = self.lignes.append
+
+    def tearDown(self):
+        bot_ecoute.log = self._log
+
+    def test_demande_a_windows_de_rester_eveille(self):
+        appels = []
+
+        def faux_api(drapeaux):
+            appels.append(drapeaux)
+            return 0x80000001  # etat precedent : Windows a accepte
+
+        self.assertTrue(bot_ecoute.empecher_la_veille(regler=faux_api))
+        # ES_CONTINUOUS (0x80000000) : le verrou dure tant qu'on tourne.
+        # ES_SYSTEM_REQUIRED (0x1) : la machine, pas seulement l'ecran --
+        # laisser l'ecran s'eteindre est souhaitable, il ne sert a rien.
+        self.assertEqual(appels, [0x80000001])
+
+    def test_un_refus_de_windows_est_journalise_sans_arreter_le_bot(self):
+        """Renvoi 0 = echec. Ecouter reste plus utile que s'arreter : sans
+        ce filet, une API indisponible tuerait le bot au demarrage."""
+        self.assertFalse(bot_ecoute.empecher_la_veille(regler=lambda d: 0))
+
+        self.assertTrue(any("veille" in l.lower() for l in self.lignes),
+                        self.lignes)
+
+    def test_une_machine_sans_cette_api_ne_fait_pas_planter_le_bot(self):
+        def absente(drapeaux):
+            raise AttributeError("pas de kernel32 ici")
+
+        self.assertFalse(bot_ecoute.empecher_la_veille(regler=absente))
+
+    def test_le_bloc_principal_pose_le_verrou_avant_la_boucle(self):
+        import inspect
+        source = inspect.getsource(bot_ecoute)
+        bloc = source.split('if __name__ == "__main__":')[1]
+        self.assertIn("empecher_la_veille()", bloc)
+        self.assertLess(bloc.index("empecher_la_veille()"), bloc.index("boucle("))
+
+
 if __name__ == "__main__":
     unittest.main()
