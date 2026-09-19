@@ -46,6 +46,26 @@ class TestUrlAviasales(unittest.TestCase):
             self.assertIn("?marker=123456.proprietaire", bloc)
 
 
+class TestEtiquetteVille(unittest.TestCase):
+    """Regle Travelpayouts rappelee dans url_aviasales : le SubID n'admet
+    que des lettres latines, des chiffres et _ -- « Le Caire » et
+    « Addis-Abeba » l'ont violee des leur ouverture (tache 5), sans
+    qu'aucun test ne le voie : les 5 villes d'origine etaient toutes en un
+    seul mot."""
+
+    def test_chaque_ville_produit_une_etiquette_valide(self):
+        for ville in hub_deals_db.RABATTEMENT:
+            etiquette = hub_deals_db.etiquette_ville(ville)
+            self.assertRegex(
+                etiquette, r"^[a-z0-9_]+$",
+                msg=f"{ville} produit l'etiquette invalide {etiquette!r}")
+
+    def test_deux_cas_connus_et_un_cas_deja_valide(self):
+        self.assertEqual(hub_deals_db.etiquette_ville("Le Caire"), "le_caire")
+        self.assertEqual(hub_deals_db.etiquette_ville("Addis-Abeba"), "addis_abeba")
+        self.assertEqual(hub_deals_db.etiquette_ville("Dakar"), "dakar")
+
+
 class TestMarkerAbsentJournalise(unittest.TestCase):
     def setUp(self):
         self._marker = hub_deals_db.TRAVELPAYOUTS_MARKER

@@ -26,6 +26,7 @@ planifiee "Traqueur de vols" pour la persistance cote Windows).
 
 import os
 import json
+import re
 import sqlite3
 import time
 import requests
@@ -403,6 +404,30 @@ def construire_lien(origin: str, destination: str, departure_at: str) -> str:
         return ""
 
 
+def etiquette_ville(ville: str) -> str:
+    """
+    Normalise un nom de ville en etiquette (SubID) valide pour
+    url_aviasales et raccourcir_liens : voir le docstring de url_aviasales
+    pour la regle exacte (source Travelpayouts), lettres latines, chiffres
+    et _ uniquement.
+
+    A appeler aux DEUX sites qui fabriquent l'etiquette -- hub_deals_db.py
+    (paires envoyees a l'API pour creer les liens courts) et abonnes.py
+    (cle de recherche dans LIENS_COURTS au moment de composer le message
+    de l'abonne) -- jamais chacun de son cote : sinon elles divergent des
+    qu'une ville a un nom compose, la cle ne correspond plus, le lien
+    court cree n'est jamais retrouve, et l'abonne recoit le lien direct --
+    prouve le 2026-09-16 comme n'etant PAS compte comme clic.
+
+    « Le Caire » et « Addis-Abeba », premieres villes du projet a nom
+    compose, ont revele ce defaut : leur etiquette brute contenait une
+    espace ou un tiret. Les etiquettes deja valides (un seul mot en
+    minuscules, comme « Dakar ») ressortent inchangees, ce qui preserve
+    les liens courts deja en circulation.
+    """
+    return re.sub(r"[^a-z0-9_]", "_", ville.lower())
+
+
 def url_aviasales(chemin: str, etiquette: str) -> str:
     """
     Lien complet vers Aviasales, avec l'identifiant d'affilie et une
@@ -487,7 +512,7 @@ def preparer_liens_courts(groupes: list) -> None:
     paires = []
     for groupe in groupes:
         paires.append((groupe[0]["lien"], "proprietaire"))
-        paires.extend((a["lien"], a["ville_depart"].lower()) for a in groupe)
+        paires.extend((a["lien"], etiquette_ville(a["ville_depart"])) for a in groupe)
     try:
         LIENS_COURTS = raccourcir_liens(paires)
     except Exception as e:

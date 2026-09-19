@@ -13,6 +13,7 @@ import requests
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import abonnes
 import hub_deals_db
 
 
@@ -196,6 +197,47 @@ class TestPreparationAuMomentDeLAlerte(_Base):
         hub_deals_db.verifier_et_notifier_anomalies(None, "2026-09-16")
         self.assertIn("marker=123456.proprietaire", self.messages[0])
         self.assertIn("imprevu", "\n".join(self.lignes))
+
+
+class TestEtiquetteCoherenteEntreLesDeuxSites(_Base):
+    """Le SubID est fabrique a deux endroits : hub_deals_db.py:490 (paires
+    envoyees a l'API pour creer les liens courts, dans preparer_liens_courts)
+    et abonnes.py:169 (cle de recherche dans LIENS_COURTS au moment de
+    composer le message de l'abonne, dans _bloc_abonne). Ce test verifie
+    qu'un lien court cree sous l'etiquette du premier site est bien
+    retrouve sous la cle du second, pour une ville a nom compose (« Le
+    Caire »). S'ils divergent, le lien court existe dans LIENS_COURTS sous
+    une cle que personne ne relit : l'abonne recoit alors le lien direct
+    de repli (marker=...), dont le 2026-09-16 a etabli qu'il n'est PAS
+    compte comme clic."""
+
+    def setUp(self):
+        super().setUp()
+        self._orig_raccourcir = hub_deals_db.raccourcir_liens
+
+        def raccourcir(paires):
+            # simule l'API : un lien court par paire (chemin, etiquette)
+            # demandee, quelle que soit l'etiquette recue
+            return {p: f"https://aviasales.tpk.ro/{i}" for i, p in enumerate(paires)}
+        hub_deals_db.raccourcir_liens = raccourcir
+
+    def tearDown(self):
+        hub_deals_db.raccourcir_liens = self._orig_raccourcir
+        super().tearDown()
+
+    def test_lien_court_d_une_ville_composee_retrouve_dans_le_message(self):
+        groupe = [{"destination": "Paris", "hub": "Le Caire", "ville_depart": "Le Caire",
+                   "prix_actuel": 300.0, "moyenne_historique": 400.0,
+                   "baisse_pct": 25.0, "economie": 100.0,
+                   "rabattement_mesure": None, "lien": "/search/CAI1710FIH1"}]
+        # site 1 : cree les liens courts (hub_deals_db.py:490)
+        hub_deals_db.preparer_liens_courts([groupe])
+        # site 2 : compose le message de l'abonne (abonnes.py:169)
+        [m] = abonnes.messages_abonne([groupe], "Le Caire")
+        self.assertIn("https://aviasales.tpk.ro/", m)
+        # si les deux sites divergeaient, le lien court ne serait jamais
+        # retrouve et on retomberait sur le lien direct marker=...
+        self.assertNotIn("marker=", m)
 
 
 if __name__ == "__main__":
