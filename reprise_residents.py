@@ -18,13 +18,11 @@ import sys
 import hub_deals_db
 
 
-def villes_residentes(rabattement=None, hubs=None) -> dict:
+def villes_residentes() -> dict:
     """{nom de ville: code IATA de son hub} pour toute ville dont le
     rabattement vers un hub vaut 0."""
-    rabattement = hub_deals_db.RABATTEMENT if rabattement is None else rabattement
-    hubs = hub_deals_db.HUBS if hubs is None else hubs
     trouvees = {}
-    for ville, couts in rabattement.items():
+    for ville, couts in hub_deals_db.RABATTEMENT.items():
         for hub_iata, cout in couts.items():
             if cout["prix"] == 0:
                 trouvees[ville] = hub_iata
@@ -42,6 +40,13 @@ def reprendre(conn: sqlite3.Connection) -> int:
     2026-09-19 sur une copie de la base reelle : plus de 5 minutes sans
     terminer 2 villes sur 13 sans index, 0,4 s avec. Il est supprime
     ensuite -- une migration ponctuelle ne laisse pas de residu de schema.
+
+    Une exception en cours de boucle (ville 5 sur 13, par exemple) est
+    remontee apres le `finally` : celui-ci supprime l'index puis appelle
+    conn.commit(), qui valide donc les villes deja inserees au lieu de les
+    annuler. C'est sans danger : la requete est idempotente (NOT EXISTS
+    exclut ce qui est deja present), un rejeu se contente de terminer les
+    villes restantes, sans doublon ni ligne corrompue.
     """
     conn.execute("""
         CREATE INDEX IF NOT EXISTS idx_reprise_residents

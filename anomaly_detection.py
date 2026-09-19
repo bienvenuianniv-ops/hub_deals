@@ -106,9 +106,10 @@ def plancher_economie(rabattement, moyenne: float) -> float:
     """Economie minimale, en euros, pour qu'une route declenche.
 
     Un rabattement nul veut dire que l'abonne part de chez lui : aucun
-    rabattement reel ne vaut 0, un test structurel le garantit. NULL n'est
-    PAS 0 -- c'est une ligne dont le rabattement est inconnu, qui retombe
-    sur le plancher absolu.
+    rabattement reel ne vaut 0, test_chaque_entree_a_un_prix_et_une_duree_coherents
+    (tests/test_hub_deals_db.py) le garantit. NULL n'est PAS 0 -- c'est une
+    ligne dont le rabattement est inconnu, qui retombe sur le plancher
+    absolu.
     """
     if rabattement == 0:
         return max(PLANCHER_RESIDENT_EUROS, PLANCHER_RESIDENT_PART * moyenne)

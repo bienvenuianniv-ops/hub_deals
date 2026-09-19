@@ -159,9 +159,15 @@ VILLE_IATA = {
 }
 
 # Pause entre deux appels API -- evite de saturer Travelpayouts.
-# 9 hubs x 32 destinations, moins les auto-exclusions = 279 appels,
-# soit ~2 minutes a 0.4s. Ce total ne depend PAS du nombre de villes de
-# depart : celles-ci se contentent de demultiplier les lignes inserees.
+# 13 hubs x 32 destinations, moins les auto-exclusions = 404 appels. Ce
+# total ne depend PAS du nombre de villes de depart : celles-ci se
+# contentent de demultiplier les lignes inserees.
+#
+# La duree d'un releve n'est PAS 404 x 0.4s (2m41) : cette pause n'est
+# qu'une borne basse volontaire, pas le cout reel d'un appel. Mesure sur
+# le journal du releve du 2026-09-19 : 381s pour 279 appels, soit 1.37s
+# par appel, latence de l'API Travelpayouts comprise -- plus de trois
+# fois la pause. A 404 appels, compter ~9 minutes, pas ~3.
 PAUSE_ENTRE_APPELS = 0.4
 
 # Cout de rabattement par ville de depart -> chaque hub.
@@ -983,7 +989,7 @@ def construire_bloc(groupe: list) -> str:
     if len(groupe) == 1:
         a = premier
         if a.get("rabattement") == 0:
-            note = "vol direct, sans rabattement"
+            note = "Vol direct, sans rabattement"
         elif a["rabattement_mesure"] is not None:
             note = f"Rabattement mesure ce jour : {a['rabattement_mesure']:.0f}\u20ac"
         else:

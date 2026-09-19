@@ -163,6 +163,25 @@ class TestChercherItineraires(unittest.TestCase):
         libelles = [o["libelle"] for o in options]
         self.assertEqual(libelles, ["direct"])
 
+    def test_nombre_appels_annonce_correctement_une_ville_classique(self):
+        """1 direct + 2 par hub (aucune exclusion ici) : le compte annonce
+        a l'utilisateur doit correspondre a ce que fait reellement la
+        boucle ci-dessus."""
+        self.assertEqual(recherche.nombre_appels("Testville", "BKK"), 7)
+
+    def test_nombre_appels_annonce_correctement_une_ville_residente(self):
+        """Le seul hub de Paris est son propre hub, a rabattement nul : il
+        est saute, il ne reste donc que le vol direct."""
+        recherche.collecteur.RABATTEMENT["Paris"] = {"CDG": {"prix": 0, "duree_h": 0}}
+
+        self.assertEqual(recherche.nombre_appels("Paris", "DXB"), 1)
+
+    def test_nombre_appels_saute_le_hub_egal_a_la_destination(self):
+        """CDG est a la fois un hub de Testville et la destination visee :
+        il doit etre exclu du compte, comme il l'est de la boucle. 1 direct
+        + 2 par hub restant (IST, CMN) = 5."""
+        self.assertEqual(recherche.nombre_appels("Testville", "CDG"), 5)
+
     def test_refuse_une_destination_egale_a_la_ville_de_depart(self):
         with self.assertRaises(ValueError) as ctx:
             recherche.chercher_itineraires(

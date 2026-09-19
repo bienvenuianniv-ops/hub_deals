@@ -1177,7 +1177,7 @@ class TestConstruireBlocResident(unittest.TestCase):
 
     def test_un_groupe_d_une_seule_ville_residente_dit_vol_direct(self):
         bloc = hub_deals_db.construire_bloc([self._anomalie("Paris", 0, 320.0)])
-        self.assertIn("vol direct", bloc)
+        self.assertIn("Vol direct", bloc)
         self.assertNotIn("Rabattement estime", bloc)
 
     def test_un_groupe_mixte_distingue_les_deux_natures(self):

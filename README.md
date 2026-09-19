@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Détecteur de bonnes affaires vol au départ de Dakar, Abidjan, Brazzaville, Lomé et Kinshasa, via 9 hubs de correspondance (Casablanca, Paris, Istanbul, Addis-Abeba, Nairobi, Abidjan, Johannesburg, Le Caire, Lagos). Interroge l'API Travelpayouts sur une matrice imposée de 32 destinations, stocke l'historique en SQLite, détecte les anomalies de prix par rapport à l'historique de chaque route, et notifie les bonnes affaires par Telegram.
+Détecteur de bonnes affaires vol au départ de treize villes, via treize hubs de correspondance (Casablanca, Paris, Istanbul, Addis-Abeba, Nairobi, Abidjan, Johannesburg, Le Caire, Lagos, Dakar, Kinshasa, Brazzaville, Lomé) — depuis le 2026-09-19, c'est exactement le même ensemble de villes des deux côtés. Interroge l'API Travelpayouts sur une matrice imposée de 32 destinations, stocke l'historique en SQLite, détecte les anomalies de prix par rapport à l'historique de chaque route, et notifie les bonnes affaires par Telegram.
 
 ## Principe
 
@@ -12,9 +12,13 @@ Un rabattement ville de départ → hub a un coût forfaitaire connu (voir `RABA
 total_estime = prix_vol_depuis_le_hub + cout_rabattement_ville_hub
 ```
 
-Cinq villes de départ sont actives : **Dakar**, **Abidjan**, **Brazzaville**, **Lomé** et **Kinshasa**. Ajouter une ville se fait en ajoutant une entrée à `RABATTEMENT`, sans autre changement de code **et sans appel API supplémentaire** : le prix hub → destination n'est interrogé qu'une fois, puis réutilisé pour chaque ville de départ (279 appels par relevé, quel que soit le nombre de villes).
+Une ville peut aussi être **sa propre origine** : le rabattement vaut alors 0 et
+`total_estime` se réduit au prix du vol direct. C'est le cas des treize villes vers leur
+propre hub — un Parisien ne paie rien pour rejoindre Paris.
 
-Une ville n'a pas d'entrée de rabattement vers un hub qui est elle-même (cas d'Abidjan, à la fois ville de départ et hub `ABJ`), ni vers un hub pour lequel l'API ne renvoie aucun prix — omis plutôt qu'estimé : `ADD` pour Abidjan, `ADD` et `JNB` pour Lomé.
+Treize villes de départ sont actives : les cinq historiques — **Dakar**, **Abidjan**, **Brazzaville**, **Lomé**, **Kinshasa** — et les huit villes résidentes ajoutées le 2026-09-19 — **Paris**, **Istanbul**, **Casablanca**, **Le Caire**, **Lagos**, **Nairobi**, **Addis-Abeba**, **Johannesburg**. Ajouter une ville qui réutilise un hub existant se fait en ajoutant une entrée à `RABATTEMENT`, sans autre changement de code **et sans appel API supplémentaire** : le prix hub → destination n'est interrogé qu'une fois, puis réutilisé pour chaque ville de départ. Les huit villes résidentes sont dans ce cas : leur hub (Paris, Istanbul…) existait déjà. Seuls Dakar, Kinshasa, Brazzaville et Lomé ont dû devenir des hubs à part entière pour voir leur propre vol direct — ce sont ces quatre hubs, et non les treize villes, qui font passer le relevé de 279 à 404 appels par relevé.
+
+Une ville a une entrée de rabattement à 0 vers un hub qui est elle-même — le cas résident, décrit plus haut. Avant le 2026-09-19, seule Abidjan cumulait les deux rôles (ville de départ et hub `ABJ`) et n'avait alors *aucune* entrée vers elle-même ; elle en a désormais une, à 0, comme les douze autres. Une ville n'a en revanche toujours aucune entrée vers un hub pour lequel l'API ne renvoie aucun prix — omis plutôt qu'estimé : `ADD` pour Abidjan, `ADD` et `JNB` pour Lomé.
 
 ### Détection d'anomalie
 
@@ -31,6 +35,13 @@ Deux règles, selon la profondeur d'historique disponible :
 Un critère s'ajoute aux deux méthodes : la baisse doit représenter au moins **80 €** d'économie
 (`ECONOMIE_MINIMALE`). C'est le seul seuil aveugle au prix du billet, et c'est voulu — il rattrape
 les routes bon marché, où un joli pourcentage ne pèse que quelques dizaines d'euros.
+
+Ce plancher de 80 € est calibré pour des itinéraires à 1 127 € de médiane, où il pèse 7 %
+du billet. Sur un vol direct au départ de la ville de l'abonné — rabattement nul, billet
+médian de 270 à 400 € — il exigerait 20 à 30 % de baisse et n'a rien laissé passer sur
+52 relevés. Ces routes utilisent donc un plancher relatif : `max(25 €, 12 % de la
+moyenne)`. Le pourcentage est légitime ici et nulle part ailleurs, parce qu'il n'est
+déformé que par la correction de rabattement — inexistante quand le rabattement est nul.
 
 Le message d'alerte affiche cette économie en euros. C'est volontaire : le rabattement mesuré du jour décale le prix *et* la moyenne du même montant, ce qui laisse l'économie absolue intacte mais **change le pourcentage affiché** — il peut donc passer sous le plancher de détection sans que l'affaire ait changé. L'économie en euros, elle, ne bouge pas.
 
@@ -64,6 +75,7 @@ travaille toujours sur les mêmes valeurs qu'avant.
 | `anomaly_detection.py` | Logique partagée de détection d'anomalie (moyenne et écart-type historiques, z-score avec repli en pourcentage), utilisée par les deux scripts ci-dessous. |
 | `detect_anomalies.py` | Outil CLI d'analyse/diagnostic — relit la base et affiche les comparaisons, sans notifier. |
 | `recherche.py` | Recherche de billet à la demande : interroger soi-même une route, et mettre une destination sous surveillance du relevé quotidien. |
+| `reprise_residents.py` | Migration ponctuelle : reporte l'historique des vols directs des villes résidentes. Rejouable sans risque. |
 | `abonnes.py` | Abonnés du bot (test privé) : inscriptions, filtrage des affaires par ville, message d'abonné, envoi, témoin d'écoute. Sans réseau. |
 | `bot_ecoute.py` | Programme d'écoute permanent du bot : commandes `/start`, `/ville`, `/stop`. Seul lecteur de `getUpdates`. |
 | `taches/` | Définition XML et script d'installation de la tâche planifiée « Bot vols - ecoute ». |
@@ -112,7 +124,7 @@ cher. Les prix d'aller sont demandés à l'API ; quand elle ne répond pas, la v
 Pour suivre une destination dans le temps et recevoir les alertes Telegram dessus :
 
 ```bash
-python recherche.py --surveiller BKK   # +9 appels par relevé
+python recherche.py --surveiller BKK   # +13 appels par relevé (un par hub)
 python recherche.py --liste
 python recherche.py --oublier BKK
 ```

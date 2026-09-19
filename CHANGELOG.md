@@ -2,6 +2,50 @@
 
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Projet personnel sans versionnage sémantique — entrées datées.
 
+## 2026-09-19
+
+### Ajouté
+- **Abonnés résidents d'un hub.** Huit villes rejoignent les cinq historiques comme villes de
+  départ — Paris, Istanbul, Casablanca, Le Caire, Lagos, Nairobi, Addis-Abeba, Johannesburg —
+  et quatre nouveaux hubs (Dakar, Kinshasa, Brazzaville, Lomé) sont ouverts pour que ces villes
+  historiques voient aussi leur propre vol direct. Un « résident » n'est pas un concept nouveau :
+  c'est une ville dont le rabattement vers son propre hub vaut 0, la valeur sincère plutôt qu'un
+  code d'exception. `total_estime` s'y réduit donc au prix du vol direct. **Aucune valeur
+  existante de `RABATTEMENT` n'a été modifiée** — seules des clés sont ajoutées (vérifié via
+  `git diff`) — et le relevé passe de 279 à 404 appels par relevé, uniquement à cause des quatre
+  nouveaux hubs : les huit villes résidentes, elles, réutilisent un hub qui existait déjà et ne
+  coûtent aucun appel supplémentaire.
+- **Plancher d'économie relatif pour les vols directs.** `ECONOMIE_MINIMALE` (80 €) est calibré
+  pour des itinéraires à 1 127 € de médiane ; sur un vol direct résident, à 270-400 € de médiane,
+  il exigerait 20 à 30 % de baisse et n'avait rien laissé passer sur 52 relevés. Ces routes
+  utilisent désormais `max(25 €, 12 % de la moyenne)`. Le pourcentage n'est fiable que là :
+  ailleurs, la correction de rabattement mesuré au moment de l'alerte déforme le pourcentage
+  affiché (voir « Rabattement mesuré à l'alerte » du README) ; sur une route résidente, le
+  rabattement est nul, donc rien à corriger, donc rien à déformer.
+- `mesurer_rabattements` court-circuite les routes à rabattement nul : les mesurer interrogerait
+  l'API sur une ville vers elle-même, qui répond HTTP 400. Le message d'alerte dit « vol direct,
+  sans rabattement » (une ville seule dans son groupe) ou « vol direct » (dans un groupe mixte)
+  plutôt que d'afficher un rabattement mesuré ou estimé qui n'a pas de sens ici.
+- `reprise_residents.py` reporte l'historique déjà en base : le prix du vol direct de chaque
+  ville résidente était stocké dans `prix_vol_hub` depuis le 2026-07-21, donc le report est
+  arithmétiquement exact, pas une estimation. 16 156 lignes reprises en 0,6 s (index temporaire
+  sur la table `offres`, supprimé ensuite), idempotence prouvée par rejeu (0 ligne la seconde
+  fois). Sans lui, chaque ville nouvellement ouverte serait restée muette trois relevés, le temps
+  que `MIN_RELEVES_HISTORIQUE` soit atteint.
+- **Rendement mesuré sur 52 relevés** avec le nouveau parc : Istanbul déclenche 1,2 affaire par
+  relevé mais pour une économie médiane de seulement 43 € ; Abidjan et Lagos, 0,5/relevé pour
+  146 et 152 € ; Paris, 0,4/relevé pour 61 €. Les cinq villes historiques restent à 2,3-3,1/relevé
+  pour ~145 €. Le volume par relevé passe d'environ 900 à 1 280 lignes.
+- Angle mort constaté en vérifiant l'interaction avec la vigie GitHub Actions : elle juge un
+  relevé sur son nombre de lignes, comparé à la moitié de la médiane des dix précédents. Le
+  passage de ~900 à ~1 280 lignes par relevé ne déclenche rien (elle n'alerte qu'en dessous du
+  seuil), et l'insertion unique des 16 156 lignes de reprise ne fausse pas la médiane. En
+  revanche, une disparition totale et silencieuse des lignes résidentes ramènerait le relevé à
+  ~900 lignes, soit 70 % de la médiane — au-dessus du seuil de 50 %, donc sans alerte. **La
+  vigie ne couvre pas la panne de cette fonctionnalité.**
+
+337 → 340 tests.
+
 ## 2026-09-18
 
 ### Ajouté

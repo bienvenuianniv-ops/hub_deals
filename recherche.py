@@ -26,7 +26,8 @@ import requests
 
 import hub_deals_db as collecteur
 
-MAX_DESTINATIONS_PERSO = 15  # chaque destination coute 9 appels par releve
+MAX_DESTINATIONS_PERSO = 15  # chaque destination coute 13 appels par releve
+                              # (un par hub -- len(collecteur.HUBS))
 
 
 def valider_ville(argument: str) -> str:
@@ -82,6 +83,21 @@ def _appeler(get_prix, origine, destination, erreurs, pause):
     if pause:
         time.sleep(collecteur.PAUSE_ENTRE_APPELS)
     return offre or {}
+
+
+def nombre_appels(ville: str, dest: str) -> int:
+    """Nombre d'appels API que fera chercher_itineraires pour ce couple.
+
+    1 pour le vol direct, plus 2 par hub reellement parcouru. Un hub est
+    saute -- donc ne compte pas -- s'il est la destination elle-meme
+    (c'est deja le direct) ou si son rabattement vaut 0 (l'abonne reside
+    dans la ville du hub : meme cas). Une seule expression couvre les deux
+    exclusions, au lieu de deux rustines qui pourraient diverger de la
+    boucle qu'elles decrivent.
+    """
+    return 1 + 2 * sum(
+        1 for hub, cout in collecteur.RABATTEMENT[ville].items()
+        if hub != dest and cout["prix"] != 0)
 
 
 def chercher_itineraires(ville, dest, get_prix=None, pause=True):
@@ -342,7 +358,7 @@ def main(argv):
         print("Erreur : TRAVELPAYOUTS_TOKEN absent de l'environnement.")
         return 1
 
-    print(f"Recherche en cours ({1 + 2 * len(collecteur.RABATTEMENT[ville])} "
+    print(f"Recherche en cours ({nombre_appels(ville, dest)} "
           f"appels API, une dizaine de secondes)...")
     try:
         options, erreurs = chercher_itineraires(ville, dest)
