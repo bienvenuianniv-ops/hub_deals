@@ -267,6 +267,65 @@ class TestDetecterAnomalies(unittest.TestCase):
         self.assertEqual(len(anomalies), 1)
         self.assertIsNone(anomalies[0]["rabattement"])
 
+    def test_un_resident_declenche_sur_une_economie_sous_80_euros(self):
+        """58 EUR sur un billet a 138 EUR de moyenne : -42 %, refuse par le
+        plancher absolu, retenu pour un vol direct."""
+        for jour in ("2026-08-01 10:00:00", "2026-08-02 10:00:00",
+                     "2026-08-03 10:00:00"):
+            _inserer_offre(self.conn, "Istanbul", "Istanbul", "BCN", "Barcelone",
+                           138, jour, rabattement=0)
+        _inserer_offre(self.conn, "Istanbul", "Istanbul", "BCN", "Barcelone",
+                       80, "2026-08-04 10:00:00", rabattement=0)
+
+        anomalies = anomaly_detection.detecter_anomalies(
+            self.conn, date_collecte="2026-08-04 10:00:00")
+
+        self.assertEqual(len(anomalies), 1)
+        self.assertEqual(anomalies[0]["economie"], 58)
+
+    def test_la_meme_baisse_ne_declenche_pas_pour_une_ville_classique(self):
+        """Non-regression : le plancher de 80 EUR reste entier des que la
+        route a un rabattement."""
+        for jour in ("2026-08-01 10:00:00", "2026-08-02 10:00:00",
+                     "2026-08-03 10:00:00"):
+            _inserer_offre(self.conn, "Dakar", "Istanbul", "BCN", "Barcelone",
+                           138, jour, rabattement=525)
+        _inserer_offre(self.conn, "Dakar", "Istanbul", "BCN", "Barcelone",
+                       80, "2026-08-04 10:00:00", rabattement=525)
+
+        anomalies = anomaly_detection.detecter_anomalies(
+            self.conn, date_collecte="2026-08-04 10:00:00")
+
+        self.assertEqual(anomalies, [])
+
+
+class TestPlancherEconomie(unittest.TestCase):
+    """Le plancher de 80 EUR est calibre pour des itineraires a 1127 EUR de
+    mediane. Chez un resident dont le billet mediane vaut 270 a 400 EUR, il
+    exige 20 a 30 % de baisse et eteint tout (mesure du 2026-09-19)."""
+
+    def test_une_route_avec_rabattement_garde_le_plancher_absolu(self):
+        self.assertEqual(anomaly_detection.plancher_economie(468, 1127), 80)
+
+    def test_un_rabattement_nul_donne_le_plancher_relatif(self):
+        # 12 % de 500 = 60, au-dessus du plancher plancher de 25
+        self.assertEqual(anomaly_detection.plancher_economie(0, 500), 60)
+
+    def test_le_plancher_relatif_ne_descend_jamais_sous_25_euros(self):
+        # 12 % de 90 = 10,8 : sans garde-fou on alerterait pour 11 EUR
+        self.assertEqual(anomaly_detection.plancher_economie(0, 90), 25)
+
+    def test_un_rabattement_absent_n_est_pas_un_resident(self):
+        """NULL en base n'est pas 0 : c'est une ligne dont on ignore le
+        rabattement, pas un vol direct."""
+        self.assertEqual(anomaly_detection.plancher_economie(None, 500), 80)
+
+    def test_la_bascule_se_fait_exactement_a_25_euros(self):
+        moyenne_pile = anomaly_detection.PLANCHER_RESIDENT_EUROS / \
+            anomaly_detection.PLANCHER_RESIDENT_PART  # 208.33...
+        self.assertAlmostEqual(
+            anomaly_detection.plancher_economie(0, moyenne_pile), 25)
+
 
 class TestSeuilsStricts(unittest.TestCase):
     """Recalibrage du 2026-09-12.

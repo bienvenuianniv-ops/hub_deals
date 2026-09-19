@@ -89,6 +89,31 @@ ECONOMIE_MINIMALE = 80  # euros gagnes par rapport a la moyenne habituelle,
                         # volontaire, il rattrape les routes bon marche ou
                         # un joli pourcentage ne represente que 40 EUR.
 
+# Plancher des routes SANS rabattement (l'abonne reside dans la ville de
+# depart). ECONOMIE_MINIMALE est calibre pour des itineraires a 1127 EUR de
+# mediane, ou 80 EUR pesent 7 % du billet ; sur un marche de residence a
+# 270-400 EUR de mediane, le meme seuil exige 20 a 30 % de baisse et
+# n'a rien laisse passer sur 52 releves (mesure du 2026-09-19).
+#
+# Le double plancher est necessaire dans les deux sens : la part seule
+# laisserait passer des alertes a 11 EUR sur les vols intra-europeens a
+# 80 EUR, le montant seul reproduirait le biais qu'on corrige ici.
+PLANCHER_RESIDENT_EUROS = 25
+PLANCHER_RESIDENT_PART = 0.12
+
+
+def plancher_economie(rabattement, moyenne: float) -> float:
+    """Economie minimale, en euros, pour qu'une route declenche.
+
+    Un rabattement nul veut dire que l'abonne part de chez lui : aucun
+    rabattement reel ne vaut 0, un test structurel le garantit. NULL n'est
+    PAS 0 -- c'est une ligne dont le rabattement est inconnu, qui retombe
+    sur le plancher absolu.
+    """
+    if rabattement == 0:
+        return max(PLANCHER_RESIDENT_EUROS, PLANCHER_RESIDENT_PART * moyenne)
+    return ECONOMIE_MINIMALE
+
 
 def get_dernier_releve(conn: sqlite3.Connection) -> str:
     """Renvoie la date du releve le plus recent dans la base."""
@@ -205,7 +230,7 @@ def detecter_anomalies(
 
         # garde-fou commun aux deux methodes : ce qu'on gagne en euros
         economie = moyenne - total_estime
-        declenche = declenche and economie >= ECONOMIE_MINIMALE
+        declenche = declenche and economie >= plancher_economie(rabattement, moyenne)
 
         if mode_diagnostic or declenche:
             resultats.append({
