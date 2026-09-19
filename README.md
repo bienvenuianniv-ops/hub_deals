@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Détecteur de bonnes affaires vol au départ de treize villes, via treize hubs de correspondance (Casablanca, Paris, Istanbul, Addis-Abeba, Nairobi, Abidjan, Johannesburg, Le Caire, Lagos, Dakar, Kinshasa, Brazzaville, Lomé) — depuis le 2026-09-19, c'est exactement le même ensemble de villes des deux côtés. Interroge l'API Travelpayouts sur une matrice imposée de 32 destinations, stocke l'historique en SQLite, détecte les anomalies de prix par rapport à l'historique de chaque route, et notifie les bonnes affaires par Telegram.
+Détecteur de bonnes affaires vol au départ de treize villes, via neuf hubs de correspondance (Casablanca, Paris, Istanbul, Addis-Abeba, Nairobi, Abidjan, Johannesburg, Le Caire, Lagos) et quatre villes interrogées uniquement pour que leurs propres habitants voient leur vol direct (Dakar, Kinshasa, Brazzaville, Lomé) — depuis le 2026-09-19, c'est exactement le même ensemble de treize villes des deux côtés. Interroge l'API Travelpayouts sur une matrice imposée de 32 destinations, stocke l'historique en SQLite, détecte les anomalies de prix par rapport à l'historique de chaque route, et notifie les bonnes affaires par Telegram.
 
 ## Principe
 

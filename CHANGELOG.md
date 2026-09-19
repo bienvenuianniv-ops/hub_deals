@@ -44,7 +44,7 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Pro
   ~900 lignes, soit 70 % de la médiane — au-dessus du seuil de 50 %, donc sans alerte. **La
   vigie ne couvre pas la panne de cette fonctionnalité.**
 
-337 → 340 tests.
+308 → 346 tests.
 
 ## 2026-09-18
 

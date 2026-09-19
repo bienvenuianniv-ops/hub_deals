@@ -122,6 +122,20 @@ class TestEnregistrerPrixMultiVilles(unittest.TestCase):
 
         self.assertEqual(lignes_inserees, 3)
 
+    def test_ville_residente_a_rabattement_nul_et_total_egal_au_prix_du_vol(self):
+        """Casablanca est residente de son propre hub CMN : c'est l'equation
+        centrale du mode resident, jamais exercee par le montage par
+        defaut de cette classe (aucune entree a 0)."""
+        hub_deals_db.RABATTEMENT["Casablanca"] = {"CMN": {"prix": 0, "duree_h": 0}}
+
+        hub_deals_db.enregistrer_prix(
+            self.conn, "CMN", "SID", self._offre_test(prix=180), "2026-08-03 12:00:00")
+
+        ligne = self.conn.execute(
+            "SELECT rabattement, total_estime FROM offres WHERE ville_depart = 'Casablanca'"
+        ).fetchone()
+        self.assertEqual(ligne, (0, 180.0))
+
     def test_n_insere_pas_de_ligne_vers_la_ville_de_depart_elle_meme(self):
         """Une destination egale a la ville de depart donne une route
         absurde -- « Dakar via Casablanca -> Dakar ». Les autres villes,

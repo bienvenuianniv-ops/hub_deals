@@ -20,6 +20,22 @@ class TestVillesResidentes(unittest.TestCase):
     def test_les_treize_villes_sont_residentes(self):
         self.assertEqual(len(reprise_residents.villes_residentes()), 13)
 
+    def test_leve_si_un_rabattement_nul_vise_un_hub_etranger(self):
+        """Controle negatif : un rabattement a 0 vers le hub d'une AUTRE
+        ville ne doit jamais etre pris pour un resident -- la migration
+        ecrirait sinon total_estime = prix_vol_hub pour un trajet qui
+        coute en realite un rabattement."""
+        original = hub_deals_db.RABATTEMENT
+        hub_deals_db.RABATTEMENT = {
+            "Dakar": {"DKR": {"prix": 0, "duree_h": 0}},
+            "Abidjan": {"DKR": {"prix": 0, "duree_h": 0}},  # hub d'une autre ville
+        }
+        try:
+            with self.assertRaises(ValueError):
+                reprise_residents.villes_residentes()
+        finally:
+            hub_deals_db.RABATTEMENT = original
+
 
 class TestReprise(unittest.TestCase):
     def setUp(self):
@@ -80,6 +96,18 @@ class TestReprise(unittest.TestCase):
 
     def test_n_ecrit_pas_de_route_ramenant_la_ville_chez_elle(self):
         self._offre("2026-08-01 10:00:00", "Dakar", "Paris", "PAR", 120, 496)
+
+        reprise_residents.reprendre(self.conn)
+
+        n = self.conn.execute(
+            "SELECT COUNT(*) FROM offres WHERE ville_depart = 'Paris'").fetchone()[0]
+        self.assertEqual(n, 0)
+
+    def test_n_ecrit_pas_de_route_vers_un_code_equivalent_a_la_ville(self):
+        """CDG est un aeroport de Paris (EQUIVALENCES['PAR'] = {'CDG'}) :
+        une destination CDG ramene Paris chez elle tout autant qu'une
+        destination PAR, et ne doit donc pas etre reportee non plus."""
+        self._offre("2026-08-01 10:00:00", "Dakar", "Paris", "CDG", 120, 496)
 
         reprise_residents.reprendre(self.conn)
 

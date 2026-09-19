@@ -25,6 +25,9 @@ def villes_residentes() -> dict:
     for ville, couts in hub_deals_db.RABATTEMENT.items():
         for hub_iata, cout in couts.items():
             if cout["prix"] == 0:
+                if hub_deals_db.HUBS[hub_iata]["nom"] != ville:
+                    raise ValueError(
+                        f"{ville}->{hub_iata} : rabattement nul vers un hub etranger")
                 trouvees[ville] = hub_iata
     return trouvees
 
@@ -57,7 +60,12 @@ def reprendre(conn: sqlite3.Connection) -> int:
         for ville, hub_iata in villes_residentes().items():
             hub_nom = hub_deals_db.HUBS[hub_iata]["nom"]
             code_ville = hub_deals_db.VILLE_IATA[ville]
-            cur = conn.execute("""
+            # EQUIVALENCES comprises : Paris exclut PAR *et* CDG, sans quoi
+            # un code equivalent ramene la ville chez elle tout autant que
+            # son propre code (voir le bug du 2026-08-03 sur VILLE_IATA).
+            codes_exclus = sorted({code_ville} | hub_deals_db.EQUIVALENCES.get(code_ville, set()))
+            placeholders = ", ".join("?" for _ in codes_exclus)
+            cur = conn.execute(f"""
                 INSERT INTO offres (
                     date_collecte, ville_depart, hub_origine, destination_code,
                     destination_nom, prix_vol_hub, rabattement, total_estime,
@@ -69,7 +77,7 @@ def reprendre(conn: sqlite3.Connection) -> int:
                 FROM offres o
                 WHERE o.hub_origine = ?
                   AND o.ville_depart != ?
-                  AND o.destination_code != ?
+                  AND o.destination_code NOT IN ({placeholders})
                   AND o.prix_vol_hub IS NOT NULL
                   AND NOT EXISTS (
                       SELECT 1 FROM offres deja
@@ -78,7 +86,7 @@ def reprendre(conn: sqlite3.Connection) -> int:
                         AND deja.hub_origine = o.hub_origine
                         AND deja.destination_code = o.destination_code
                   )
-            """, (ville, hub_nom, ville, code_ville, ville))
+            """, (ville, hub_nom, ville, *codes_exclus, ville))
             total += cur.rowcount
         conn.commit()
     finally:
@@ -89,7 +97,7 @@ def reprendre(conn: sqlite3.Connection) -> int:
 
 if __name__ == "__main__":
     chemin = sys.argv[1] if len(sys.argv) > 1 else hub_deals_db.DB_PATH
-    connexion = sqlite3.connect(chemin)
+    connexion = sqlite3.connect(chemin, timeout=30)
     try:
         n = reprendre(connexion)
         print(f"{n} ligne(s) reportee(s) dans {chemin}")
