@@ -130,6 +130,9 @@ def chercher_itineraires(ville, dest, get_prix=None, pause=True):
     for hub, cout in collecteur.RABATTEMENT[ville].items():
         if hub == dest:
             continue  # aller a X via X, c'est le vol direct deja traite
+        if cout["prix"] == 0:
+            continue  # l'abonne reside dans la ville du hub : son vol direct
+                      # est deja l'option 1, et c'est le meme vol
 
         offre_aller = _appeler(get_prix_aller, origine, hub, erreurs, pause)
         if offre_aller.get("price"):

@@ -146,6 +146,23 @@ class TestChercherItineraires(unittest.TestCase):
         self.assertIn("direct", libelles)
         self.assertNotIn("via Paris", libelles)
 
+    def test_saute_le_hub_a_rabattement_nul(self):
+        """Un resident de Paris ne doit pas voir « via Paris » : c'est le
+        vol direct, deja propose en option 1, et le doublon porterait en
+        prime la mention trompeuse « aller estime »."""
+        recherche.collecteur.RABATTEMENT["Paris"] = {"CDG": {"prix": 0, "duree_h": 0}}
+        recherche.collecteur.VILLE_IATA["Paris"] = "PAR"
+
+        options, _ = recherche.chercher_itineraires(
+            "Paris", "DXB",
+            get_prix=self._prix({
+                ("PAR", "DXB"): 420,
+                ("CDG", "DXB"): 420,
+            }), pause=False)
+
+        libelles = [o["libelle"] for o in options]
+        self.assertEqual(libelles, ["direct"])
+
     def test_refuse_une_destination_egale_a_la_ville_de_depart(self):
         with self.assertRaises(ValueError) as ctx:
             recherche.chercher_itineraires(

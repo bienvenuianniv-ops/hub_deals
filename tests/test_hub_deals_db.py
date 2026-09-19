@@ -246,7 +246,9 @@ class TestRabattement(unittest.TestCase):
     def test_les_villes_de_depart_attendues_sont_presentes(self):
         self.assertEqual(
             set(hub_deals_db.RABATTEMENT.keys()),
-            {"Dakar", "Abidjan", "Brazzaville", "Lome", "Kinshasa"},
+            {"Dakar", "Abidjan", "Brazzaville", "Lome", "Kinshasa",
+             "Paris", "Istanbul", "Casablanca", "Le Caire", "Lagos",
+             "Nairobi", "Addis-Abeba", "Johannesburg"},
         )
 
     def test_chaque_hub_reference_existe_dans_HUBS(self):
@@ -256,36 +258,76 @@ class TestRabattement(unittest.TestCase):
                     hub_iata, hub_deals_db.HUBS,
                     msg=f"{ville} reference le hub inconnu {hub_iata}")
 
-    def test_chaque_entree_a_un_prix_et_une_duree_positifs(self):
+    def test_chaque_entree_a_un_prix_et_une_duree_coherents(self):
+        """Un rabattement vaut 0 exactement quand la ville est celle du hub
+        (l'abonne part de chez lui) ; partout ailleurs il est positif."""
         for ville, couts in hub_deals_db.RABATTEMENT.items():
             for hub_iata, cout in couts.items():
-                self.assertGreater(
-                    cout["prix"], 0, msg=f"prix invalide pour {ville}->{hub_iata}")
-                self.assertGreater(
-                    cout["duree_h"], 0, msg=f"duree_h invalide pour {ville}->{hub_iata}")
+                propre_hub = hub_deals_db.HUBS[hub_iata]["nom"] == ville
+                if propre_hub:
+                    self.assertEqual(
+                        cout["prix"], 0,
+                        msg=f"{ville}->{hub_iata} est son propre hub : prix attendu 0")
+                    self.assertEqual(cout["duree_h"], 0)
+                else:
+                    self.assertGreater(
+                        cout["prix"], 0, msg=f"prix invalide pour {ville}->{hub_iata}")
+                    self.assertGreater(
+                        cout["duree_h"], 0, msg=f"duree_h invalide pour {ville}->{hub_iata}")
 
-    def test_aucune_ville_n_a_de_rabattement_vers_son_propre_hub(self):
-        """Abidjan est a la fois ville de depart et hub : il ne doit pas y
-        avoir de cout pour s'y rabattre depuis elle-meme."""
+    def test_chaque_ville_a_un_rabattement_nul_vers_son_propre_hub(self):
+        """L'inverse de l'invariant d'avant le 2026-09-19 : une ville qui est
+        aussi un hub ne voyait jamais ses propres vols directs (0 ligne
+        Abidjan -> via Abidjan en base sur 111 releves)."""
+        noms_hubs = {info["nom"]: iata for iata, info in hub_deals_db.HUBS.items()}
         for ville, couts in hub_deals_db.RABATTEMENT.items():
-            noms_hubs = {hub_deals_db.HUBS[h]["nom"] for h in couts}
-            self.assertNotIn(
-                ville, noms_hubs,
-                msg=f"{ville} a un cout de rabattement vers elle-meme")
+            iata_propre = noms_hubs.get(ville)
+            self.assertIsNotNone(
+                iata_propre, msg=f"{ville} n'a pas de hub a son nom")
+            self.assertIn(
+                iata_propre, couts,
+                msg=f"{ville} n'a pas de route directe depuis chez elle")
+            self.assertEqual(couts[iata_propre]["prix"], 0)
 
     def test_abidjan_contient_exactement_les_hubs_attendus(self):
         self.assertEqual(
             set(hub_deals_db.RABATTEMENT["Abidjan"].keys()),
-            {"CMN", "CDG", "IST", "NBO", "JNB", "CAI", "LOS"},
+            {"CMN", "CDG", "IST", "NBO", "JNB", "CAI", "LOS", "ABJ"},
         )
 
     def test_lome_omet_les_hubs_sans_donnee_reelle(self):
         """ADD et JNB n'ont de prix sur aucun des endpoints Travelpayouts
-        au depart de Lome : on les omet plutot que d'inventer une valeur."""
+        au depart de Lome : on les omet plutot que d'inventer une valeur.
+        LFW, lui, est le hub de Lome elle-meme : rabattement nul."""
         self.assertEqual(
             set(hub_deals_db.RABATTEMENT["Lome"].keys()),
-            {"CMN", "CDG", "IST", "NBO", "ABJ", "CAI", "LOS"},
+            {"CMN", "CDG", "IST", "NBO", "ABJ", "CAI", "LOS", "LFW"},
         )
+
+    def test_une_ville_residente_n_a_que_son_propre_hub(self):
+        """Les correspondances pour residents produisent des itineraires
+        absurdes (Paris -> Abidjan -> Rome a 1048 EUR quand le direct est a
+        88 EUR). Mesure du 2026-09-19, spec section (e)."""
+        residentes = {"Paris", "Istanbul", "Casablanca", "Le Caire", "Lagos",
+                      "Nairobi", "Addis-Abeba", "Johannesburg"}
+        noms_hubs = {info["nom"]: iata for iata, info in hub_deals_db.HUBS.items()}
+        for ville in residentes:
+            self.assertEqual(
+                set(hub_deals_db.RABATTEMENT[ville].keys()),
+                {noms_hubs[ville]},
+                msg=f"{ville} ne doit avoir que son propre hub")
+
+    def test_les_quatre_hubs_de_residence_ne_servent_que_leur_ville(self):
+        """DKR, FIH, BZV et LFW ont ete ajoutes pour que Dakar, Kinshasa,
+        Brazzaville et Lome voient leurs vols directs. Aucune autre ville
+        n'a de rabattement vers eux -- sans quoi il faudrait des valeurs
+        qu'on n'a jamais mesurees."""
+        for hub in ("DKR", "FIH", "BZV", "LFW"):
+            villes = [v for v, couts in hub_deals_db.RABATTEMENT.items() if hub in couts]
+            self.assertEqual(
+                len(villes), 1,
+                msg=f"{hub} devrait ne servir qu'une ville, il en sert {villes}")
+            self.assertEqual(hub_deals_db.HUBS[hub]["nom"], villes[0])
 
     def test_chaque_ville_de_depart_a_un_code_iata(self):
         """Sans code IATA, une ville de depart ne peut pas etre reconnue
@@ -297,10 +339,12 @@ class TestRabattement(unittest.TestCase):
                 ville, hub_deals_db.VILLE_IATA,
                 msg=f"{ville} n'a pas de code IATA dans VILLE_IATA")
 
-    def test_kinshasa_couvre_tous_les_hubs(self):
+    def test_kinshasa_couvre_tous_les_hubs_de_correspondance(self):
+        """Les hubs ajoutes le 2026-09-19 (DKR, BZV, LFW) ne servent que
+        leur propre ville : Kinshasa n'a pas a s'y rabattre."""
         self.assertEqual(
             set(hub_deals_db.RABATTEMENT["Kinshasa"].keys()),
-            set(hub_deals_db.HUBS.keys()),
+            {"CMN", "CDG", "IST", "ADD", "NBO", "ABJ", "JNB", "CAI", "LOS", "FIH"},
         )
 
 

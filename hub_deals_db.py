@@ -69,6 +69,14 @@ HUBS = {
     "JNB": {"nom": "Johannesburg"},
     "CAI": {"nom": "Le Caire"},
     "LOS": {"nom": "Lagos"},
+    # Ajoutes le 2026-09-19 : ces villes ne sont pas des hubs de
+    # correspondance, elles sont interrogees pour que leurs propres
+    # habitants voient leurs vols directs. Aucune autre ville n'a de
+    # rabattement vers eux, la boucle d'insertion les saute donc d'elle-meme.
+    "DKR": {"nom": "Dakar"},
+    "FIH": {"nom": "Kinshasa"},
+    "BZV": {"nom": "Brazzaville"},
+    "LFW": {"nom": "Lome"},
 }
 
 # Destinations surveillees -- c'est NOUS qui les imposons, au lieu de subir
@@ -139,6 +147,15 @@ VILLE_IATA = {
     "Brazzaville": "BZV",
     "Lome": "LFW",
     "Kinshasa": "FIH",
+    # villes residentes ajoutees le 2026-09-19
+    "Paris": "PAR",          # PAR est le code destination ; CDG, le code hub
+    "Istanbul": "IST",
+    "Casablanca": "CMN",
+    "Le Caire": "CAI",
+    "Lagos": "LOS",
+    "Nairobi": "NBO",
+    "Addis-Abeba": "ADD",
+    "Johannesburg": "JNB",
 }
 
 # Pause entre deux appels API -- evite de saturer Travelpayouts.
@@ -206,6 +223,7 @@ RABATTEMENT = {
         "JNB": {"prix": 500, "duree_h": 10},  # [NM]
         "CAI": {"prix": 380, "duree_h": 7},   # [NM]
         "LOS": {"prix": 450, "duree_h": 4},   # [NM]
+        "DKR": {"prix": 0, "duree_h": 0},
     },
     # mesure 2026-08-16 ; les [NM] datent du releve API du 2026-08-03
     "Abidjan": {
@@ -216,6 +234,7 @@ RABATTEMENT = {
         "JNB": {"prix": 350, "duree_h": 9},   # [NM]
         "CAI": {"prix": 715, "duree_h": 6},   # [M] etait 340
         "LOS": {"prix": 806, "duree_h": 2},   # [M] etait 400
+        "ABJ": {"prix": 0, "duree_h": 0},
     },
     # mesure 2026-08-16 ; les [NM] etaient des estimations manuelles
     "Brazzaville": {
@@ -227,6 +246,7 @@ RABATTEMENT = {
         "JNB": {"prix": 634, "duree_h": 4},   # [M] etait 450 (estimation)
         "CAI": {"prix": 1193, "duree_h": 8},  # [M] etait 750 (estimation)
         "LOS": {"prix": 1083, "duree_h": 3},  # [M] etait 400
+        "BZV": {"prix": 0, "duree_h": 0},
     },
     # mesure 2026-08-16 ; les [NM] datent du releve API du 2026-08-15,
     # donc encore frais
@@ -238,6 +258,7 @@ RABATTEMENT = {
         "ABJ": {"prix": 434, "duree_h": 2},   # [M] etait 441
         "CAI": {"prix": 552, "duree_h": 13},  # [NM]
         "LOS": {"prix": 313, "duree_h": 7},   # [NM]
+        "LFW": {"prix": 0, "duree_h": 0},
     },
     # mesure 2026-08-16 ; les [NM] datent du releve API du 2026-08-15.
     # Ville la plus fiable : 8 des 9 valeurs confirmees inchangees a un
@@ -253,7 +274,25 @@ RABATTEMENT = {
         "JNB": {"prix": 321, "duree_h": 22},  # [M] inchange
         "CAI": {"prix": 412, "duree_h": 6},   # [M] inchange
         "LOS": {"prix": 630, "duree_h": 8},   # [M] inchange
+        "FIH": {"prix": 0, "duree_h": 0},
     },
+    # --- Villes residentes, ajoutees le 2026-09-19 ---------------------
+    # Un resident n'est pas un concept nouveau : c'est une ville dont le
+    # rabattement vers son propre hub vaut 0. Le 0 est la valeur sincere,
+    # pas un code d'exception -- et c'est lui qui bascule le plancher
+    # d'economie sur sa forme relative (voir plancher_economie).
+    #
+    # Une seule entree par ville, volontairement : les correspondances
+    # pour residents produisent des itineraires absurdes (Paris -> Abidjan
+    # -> Rome a 1048 EUR quand notre propre base a le direct a 88 EUR).
+    "Paris": {"CDG": {"prix": 0, "duree_h": 0}},
+    "Istanbul": {"IST": {"prix": 0, "duree_h": 0}},
+    "Casablanca": {"CMN": {"prix": 0, "duree_h": 0}},
+    "Le Caire": {"CAI": {"prix": 0, "duree_h": 0}},
+    "Lagos": {"LOS": {"prix": 0, "duree_h": 0}},
+    "Nairobi": {"NBO": {"prix": 0, "duree_h": 0}},
+    "Addis-Abeba": {"ADD": {"prix": 0, "duree_h": 0}},
+    "Johannesburg": {"JNB": {"prix": 0, "duree_h": 0}},
 }
 
 

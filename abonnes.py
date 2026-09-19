@@ -22,6 +22,14 @@ NOMS_AFFICHES = {
     "Lome": "Lomé",
     "Kinshasa": "Kinshasa",
     "Brazzaville": "Brazzaville",
+    "Paris": "Paris",
+    "Istanbul": "Istanbul",
+    "Casablanca": "Casablanca",
+    "Le Caire": "Le Caire",
+    "Lagos": "Lagos",
+    "Nairobi": "Nairobi",
+    "Addis-Abeba": "Addis-Abeba",
+    "Johannesburg": "Johannesburg",
 }
 
 # garde-fou du test prive : protege si le lien d'invitation circule
