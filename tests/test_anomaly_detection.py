@@ -13,13 +13,18 @@ hub_deals_db.TRAVELPAYOUTS_PROJET = None
 import anomaly_detection
 
 
-def _inserer_offre(conn, ville, hub, dest_code, dest_nom, total_estime, date_collecte):
+def _inserer_offre(conn, ville, hub, dest_code, dest_nom, total_estime, date_collecte,
+                   rabattement=500):
+    """rabattement=500 par defaut : une ville classique. Les tests de
+    residents passent explicitement rabattement=0, qui est le discriminant
+    du plancher relatif."""
     conn.execute("""
         INSERT INTO offres (
             date_collecte, ville_depart, hub_origine, destination_code,
             destination_nom, prix_vol_hub, rabattement, total_estime, date_depart, lien
-        ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, '2026-09-01T10:00:00+00:00', '/search/x')
-    """, (date_collecte, ville, hub, dest_code, dest_nom, total_estime, total_estime))
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '2026-09-01T10:00:00+00:00', '/search/x')
+    """, (date_collecte, ville, hub, dest_code, dest_nom, total_estime, rabattement,
+          total_estime))
     conn.commit()
 
 
@@ -211,6 +216,56 @@ class TestDetecterAnomalies(unittest.TestCase):
         anomalies = anomaly_detection.detecter_anomalies(self.conn, date_collecte="2026-08-03 10:00:00")
 
         self.assertEqual([a["destination_code"] for a in anomalies], ["LIS", "SID"])
+
+    def test_l_anomalie_porte_le_rabattement_de_sa_route(self):
+        """Sans cette donnee, aucune decision ne peut dependre du fait que
+        la route est directe."""
+        for jour, prix in (("2026-08-01 10:00:00", 1000),
+                           ("2026-08-02 10:00:00", 1000),
+                           ("2026-08-03 10:00:00", 1000)):
+            _inserer_offre(self.conn, "Dakar", "Casablanca", "BKK", "Bangkok",
+                           prix, jour, rabattement=468)
+        _inserer_offre(self.conn, "Dakar", "Casablanca", "BKK", "Bangkok",
+                       700, "2026-08-04 10:00:00", rabattement=468)
+
+        anomalies = anomaly_detection.detecter_anomalies(
+            self.conn, date_collecte="2026-08-04 10:00:00")
+
+        self.assertEqual(len(anomalies), 1)
+        self.assertEqual(anomalies[0]["rabattement"], 468)
+
+    def test_un_rabattement_absent_vaut_None_et_ne_plante_pas(self):
+        """detect_anomalies.py insere des lignes sans rabattement : la
+        colonne peut etre NULL."""
+        self.conn.execute("""
+            INSERT INTO offres (date_collecte, ville_depart, hub_origine,
+                destination_code, destination_nom, prix_vol_hub, total_estime,
+                date_depart, lien)
+            VALUES ('2026-08-01 10:00:00', 'Dakar', 'Casablanca', 'SIN',
+                    'Singapour', 900, 900, '', '')
+        """)
+        self.conn.commit()
+        for jour in ("2026-08-02 10:00:00", "2026-08-03 10:00:00"):
+            self.conn.execute("""
+                INSERT INTO offres (date_collecte, ville_depart, hub_origine,
+                    destination_code, destination_nom, prix_vol_hub, total_estime,
+                    date_depart, lien)
+                VALUES (?, 'Dakar', 'Casablanca', 'SIN', 'Singapour', 900, 900, '', '')
+            """, (jour,))
+        self.conn.execute("""
+            INSERT INTO offres (date_collecte, ville_depart, hub_origine,
+                destination_code, destination_nom, prix_vol_hub, total_estime,
+                date_depart, lien)
+            VALUES ('2026-08-04 10:00:00', 'Dakar', 'Casablanca', 'SIN',
+                    'Singapour', 600, 600, '', '')
+        """)
+        self.conn.commit()
+
+        anomalies = anomaly_detection.detecter_anomalies(
+            self.conn, date_collecte="2026-08-04 10:00:00")
+
+        self.assertEqual(len(anomalies), 1)
+        self.assertIsNone(anomalies[0]["rabattement"])
 
 
 class TestSeuilsStricts(unittest.TestCase):

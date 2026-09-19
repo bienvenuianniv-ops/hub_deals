@@ -167,13 +167,14 @@ def detecter_anomalies(
 
     cur = conn.execute("""
         SELECT ville_depart, hub_origine, destination_code, destination_nom,
-               total_estime, date_depart, lien
+               total_estime, date_depart, lien, rabattement
         FROM offres
         WHERE date_collecte = ?
     """, (date_collecte,))
 
     resultats = []
-    for ville, hub, dest_code, dest_nom, total_estime, date_depart, lien in cur.fetchall():
+    for (ville, hub, dest_code, dest_nom, total_estime, date_depart, lien,
+         rabattement) in cur.fetchall():
         info = stats.get((ville, hub, dest_code))
 
         if not info or total_estime is None:
@@ -224,6 +225,9 @@ def detecter_anomalies(
                 "nb_releves_historique": info["nb_releves"],
                 "date_depart": date_depart,
                 "lien": lien,
+                # sert de discriminant au plancher d'economie : 0 = vol
+                # direct depuis la ville de l'abonne (voir plancher_economie)
+                "rabattement": rabattement,
             })
 
     resultats.sort(key=lambda x: x["baisse_pct"], reverse=True)
