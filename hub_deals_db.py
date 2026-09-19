@@ -943,7 +943,9 @@ def construire_bloc(groupe: list) -> str:
 
     if len(groupe) == 1:
         a = premier
-        if a["rabattement_mesure"] is not None:
+        if a.get("rabattement") == 0:
+            note = "vol direct, sans rabattement"
+        elif a["rabattement_mesure"] is not None:
             note = f"Rabattement mesure ce jour : {a['rabattement_mesure']:.0f}\u20ac"
         else:
             note = "Rabattement estime, non mesure ce jour"
@@ -961,7 +963,9 @@ def construire_bloc(groupe: list) -> str:
     lignes = [f"\n<b>{premier['destination']}</b> (depuis {premier['hub']}) "
               f"- economie {economie:.0f}\u20ac"]
     for a in groupe:
-        if a["rabattement_mesure"] is not None:
+        if a.get("rabattement") == 0:
+            etat = "vol direct"
+        elif a["rabattement_mesure"] is not None:
             etat = f"rabattement mesure {a['rabattement_mesure']:.0f}\u20ac"
         else:
             etat = "rabattement estime"

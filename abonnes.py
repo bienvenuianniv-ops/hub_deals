@@ -159,8 +159,11 @@ def filtrer_groupes(groupes: list, ville: str) -> list:
 
 def _bloc_abonne(a: dict, ville: str) -> str:
     lien = hub_deals_db.url_aviasales(a["lien"], ville.lower())
+    # rabattement nul = l'abonne part de chez lui ; « via Paris » pour un
+    # Parisien n'aurait aucun sens
+    trajet = "— vol direct" if a.get("rabattement") == 0 else f"via {a['hub']}"
     return (
-        f"\n<b>{a['destination']}</b> via {a['hub']}\n"
+        f"\n<b>{a['destination']}</b> {trajet}\n"
         f"{a['prix_actuel']:.0f}€ (-{a['baisse_pct']:.0f}%) — "
         f"{a['economie']:.0f}€ de moins que d'habitude\n"
         f"{lien}"

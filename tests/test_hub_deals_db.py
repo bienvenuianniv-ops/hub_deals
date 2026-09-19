@@ -1120,5 +1120,37 @@ class TestJournalisationDuMessageTelegram(unittest.TestCase):
         self.assertIn("ERREUR envoi Telegram", self._journal())
 
 
+class TestConstruireBlocResident(unittest.TestCase):
+    def _anomalie(self, ville, rabattement, prix):
+        return {
+            "destination": "Dubai", "destination_code": "DXB",
+            "hub": "Paris", "ville_depart": ville,
+            "prix_actuel": prix, "moyenne_historique": prix + 150.0,
+            "baisse_pct": 20.0, "economie": 150.0,
+            "rabattement": rabattement, "rabattement_mesure": None,
+            "lien": "/search/x", "date_depart": "2026-10-01",
+        }
+
+    def test_un_groupe_d_une_seule_ville_residente_dit_vol_direct(self):
+        bloc = hub_deals_db.construire_bloc([self._anomalie("Paris", 0, 320.0)])
+        self.assertIn("vol direct", bloc)
+        self.assertNotIn("Rabattement estime", bloc)
+
+    def test_un_groupe_mixte_distingue_les_deux_natures(self):
+        """Un resident de Paris et un Dakarois peuvent partager la meme
+        affaire CDG -> DXB : le groupe les affiche cote a cote."""
+        bloc = hub_deals_db.construire_bloc([
+            self._anomalie("Paris", 0, 320.0),
+            self._anomalie("Dakar", 496, 816.0),
+        ])
+        self.assertIn("vol direct", bloc)
+        self.assertIn("rabattement estime", bloc)
+
+    def test_une_ville_classique_seule_est_inchangee(self):
+        bloc = hub_deals_db.construire_bloc([self._anomalie("Dakar", 496, 816.0)])
+        self.assertIn("Rabattement estime, non mesure ce jour", bloc)
+        self.assertNotIn("vol direct", bloc)
+
+
 if __name__ == "__main__":
     unittest.main()

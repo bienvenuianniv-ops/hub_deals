@@ -415,5 +415,27 @@ class TestAlerteEcouteArretee(unittest.TestCase):
                         bloc.index("=== Fin d'execution ==="))
 
 
+class TestBlocAbonneResident(unittest.TestCase):
+    def _anomalie(self, rabattement):
+        return {
+            "destination": "Dubai", "destination_code": "DXB",
+            "hub": "Paris", "ville_depart": "Paris",
+            "prix_actuel": 320.0, "moyenne_historique": 420.0,
+            "baisse_pct": 23.8, "economie": 100.0,
+            "rabattement": rabattement, "rabattement_mesure": None,
+            "lien": "/search/x", "date_depart": "2026-10-01",
+        }
+
+    def test_un_vol_direct_ne_dit_pas_via_sa_propre_ville(self):
+        bloc = abonnes._bloc_abonne(self._anomalie(0), "Paris")
+        self.assertIn("vol direct", bloc)
+        self.assertNotIn("via Paris", bloc)
+
+    def test_une_route_avec_rabattement_garde_le_via(self):
+        bloc = abonnes._bloc_abonne(self._anomalie(496), "Dakar")
+        self.assertIn("via Paris", bloc)
+        self.assertNotIn("vol direct", bloc)
+
+
 if __name__ == "__main__":
     unittest.main()
