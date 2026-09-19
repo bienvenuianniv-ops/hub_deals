@@ -555,6 +555,13 @@ def mesurer_rabattements(couples, get_prix=None, pause: bool = True) -> dict:
         if cout is None:
             continue  # pas de rabattement connu pour ce couple
 
+        # rabattement nul = l'abonne reside dans la ville du hub. Mesurer
+        # ce trajet interrogerait l'API sur une ville vers elle-meme, qui
+        # repond 400 (voir EQUIVALENCES).
+        if cout["prix"] == 0:
+            mesures[(ville, hub_nom)] = {"prix": 0, "table": 0, "mesure": False}
+            continue
+
         repli = {"prix": cout["prix"], "table": cout["prix"], "mesure": False}
         origine = VILLE_IATA.get(ville)
         if origine is None:

@@ -528,6 +528,49 @@ class TestMesurerRabattements(unittest.TestCase):
         self.assertEqual(len(noms), len(set(noms)))
 
 
+class TestMesurerRabattementNul(unittest.TestCase):
+    """Un resident part de chez lui : mesurer ce trajet reviendrait a
+    interroger l'API sur une ville vers elle-meme, ce qui repond 400."""
+
+    def setUp(self):
+        self._original = hub_deals_db.RABATTEMENT
+        hub_deals_db.RABATTEMENT = {
+            "Paris": {"CDG": {"prix": 0, "duree_h": 0}},
+            "Dakar": {"CDG": {"prix": 496, "duree_h": 6}},
+        }
+
+    def tearDown(self):
+        hub_deals_db.RABATTEMENT = self._original
+
+    def test_aucun_appel_api_pour_un_rabattement_nul(self):
+        appels = []
+
+        def faux_get_prix(origine, destination):
+            appels.append((origine, destination))
+            return {"price": 999}
+
+        mesures = hub_deals_db.mesurer_rabattements(
+            [("Paris", "Paris")], get_prix=faux_get_prix, pause=False)
+
+        self.assertEqual(appels, [])
+        self.assertEqual(mesures[("Paris", "Paris")],
+                         {"prix": 0, "table": 0, "mesure": False})
+
+    def test_une_ville_classique_est_toujours_mesuree(self):
+        appels = []
+
+        def faux_get_prix(origine, destination):
+            appels.append((origine, destination))
+            return {"price": 510}
+
+        mesures = hub_deals_db.mesurer_rabattements(
+            [("Dakar", "Paris")], get_prix=faux_get_prix, pause=False)
+
+        self.assertEqual(appels, [("DKR", "CDG")])
+        self.assertTrue(mesures[("Dakar", "Paris")]["mesure"])
+        self.assertEqual(mesures[("Dakar", "Paris")]["prix"], 510)
+
+
 class TestCorrigerAnomalies(unittest.TestCase):
     def _anomalie(self, ville="Dakar", hub="Abidjan", prix=810.0,
                   moyenne=900.0, baisse=10.0):
