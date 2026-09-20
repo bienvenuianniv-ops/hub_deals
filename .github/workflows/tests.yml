@@ -30,3 +30,37 @@ jobs:
         # Sans jeton ni base : les tests ne touchent ni le reseau ni
         # flight_deals.db (ignoree par git), tout est simule.
         run: python -m pytest tests -q
+
+  postgres:
+    # Linux et non Windows : les services de conteneurs n'existent pas sur
+    # les runners Windows. Ce job ne lance QUE les tests de persistance ;
+    # la suite complete reste sur Windows, ou vivent tasklist et pythonw.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: essai
+          POSTGRES_DB: hub_deals_test
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+
+      - name: Installer les dependances
+        run: pip install -r requirements-dev.txt
+
+      - name: Lancer les tests de persistance
+        # -rs affiche les tests sautes : un saut ici doit se voir, sinon le
+        # job passerait au vert sans avoir rien verifie du dialecte reel.
+        env:
+          HUB_DEALS_TEST_PG_URL: postgresql://postgres:essai@localhost:5432/hub_deals_test
+        run: python -m pytest tests/test_magasin.py -q -rs
