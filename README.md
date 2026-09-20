@@ -204,7 +204,10 @@ si les huit villes qui ne partent que de leur propre hub disparaissaient, le rel
 76 % de son volume habituel et passerait pour normal. Chaque ville est jugée contre sa propre
 médiane, les absences comptant pour zéro — une ville nouvelle ou intermittente a donc une médiane
 basse et ne déclenche rien. En dessous de 10 lignes de médiane, une ville n'est pas jugée. Les
-volumes sont lus dans le dump déjà poussé, chargé dans une base SQLite en mémoire (0,7 s).
+volumes sont lus dans le dump déjà poussé, chargé dans une base SQLite en mémoire (0,7 s). La
+vigie imprime ce qu'elle a lu (`Volumes lus : 11 relevé(s), 13 ville(s)`) et rend un code non nul
+si le dump est illisible : sans quoi « aucune ville effondrée » et « je n'ai rien pu lire »
+seraient le même silence.
 
 Le silence est donc normal. Le bilan du lundi est le signe de vie de la vigie elle-même, et si la
 vigie plante, GitHub envoie un courriel d'échec : sa panne ne peut pas être silencieuse.

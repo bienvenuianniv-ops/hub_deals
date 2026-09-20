@@ -1,5 +1,8 @@
 """Tests de la vigie externe (spec du 2026-09-18)."""
+import contextlib
+import io
 import os
+import sqlite3
 import sys
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -264,6 +267,40 @@ class TestMain(unittest.TestCase):
         self.assertEqual(len(self.envoyes), 1)
         self.assertNotIn("Rien à signaler", self.envoyes[0])
 
+    def test_un_dump_illisible_fait_echouer_la_tache(self):
+        """Code non nul = courriel d'echec de GitHub : la panne du critere
+        par ville ne peut pas passer pour un « rien a signaler »."""
+        mardi = datetime(2026, 9, 22, 15, 0, tzinfo=timezone.utc)
+
+        def dump_casse():
+            raise sqlite3.DatabaseError("dump tronque")
+
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            code = vigie.main(argv=[], releves=self._releves([940] * 11, mardi),
+                              lire_volumes=dump_casse, envoyer=self._envoyer,
+                              maintenant=mardi)
+
+        self.assertEqual(code, 1)
+        self.assertIn("dump tronque", sortie.getvalue())
+
+    def test_un_dump_illisible_laisse_partir_les_alertes(self):
+        """Elle echoue APRES avoir dit ce qu'elle savait : sinon la panne du
+        relevé, elle, resterait muette."""
+        jeudi = datetime(2026, 9, 24, 15, 0, tzinfo=timezone.utc)
+        vieux = self._releves([940] * 11,
+                              datetime(2026, 9, 22, 13, 0, tzinfo=timezone.utc))
+
+        def dump_casse():
+            raise sqlite3.DatabaseError("dump tronque")
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            code = vigie.main(argv=[], releves=vieux, lire_volumes=dump_casse,
+                              envoyer=self._envoyer, maintenant=jeudi)
+
+        self.assertEqual(code, 1)
+        self.assertEqual(len(self.envoyes), 1)
+        self.assertIn("plus de relevé", self.envoyes[0])
+
     def test_un_echec_d_envoi_fait_echouer_la_tache(self):
         """Sinon la panne serait doublement silencieuse. Un code non nul
         declenche le courriel d'echec de GitHub."""
@@ -320,11 +357,21 @@ class TestVolumesParVille(unittest.TestCase):
 
         self.assertEqual(volumes, [{"Dakar": 1, "Istanbul": 1}])
 
-    def test_un_dump_illisible_ne_fait_pas_planter(self):
-        """La vigie doit parler meme si le dump est tronque : se taire ici,
-        c'est le silence que la vigie existe justement pour eviter."""
-        self.assertEqual(vigie.lire_volumes_par_ville(lire_dump=lambda: "ceci"),
-                         [])
+    def test_un_dump_illisible_leve_au_lieu_de_se_taire(self):
+        """Avale, l'echec de lecture rendrait [] -- donc « aucune ville
+        effondree ». Se taire sur sa propre panne est exactement l'angle
+        mort que ce critere ferme. C'est main qui rattrape."""
+        with self.assertRaises(sqlite3.Error):
+            vigie.lire_volumes_par_ville(lire_dump=lambda: "ceci n'est pas du SQL")
+
+    def test_dit_dans_le_journal_ce_qu_elle_a_lu(self):
+        """Sans cette trace, le journal du job ne distingue pas un critere
+        qui s'est tu d'un critere qui n'a pas tourne."""
+        sortie = io.StringIO()
+        with contextlib.redirect_stdout(sortie):
+            vigie.lire_volumes_par_ville(lire_dump=lambda: DUMP_REEL)
+
+        self.assertIn("2 relevé(s), 2 ville(s)", sortie.getvalue())
 
     def test_lit_le_dump_de_la_branche_des_sauvegardes(self):
         commandes = []

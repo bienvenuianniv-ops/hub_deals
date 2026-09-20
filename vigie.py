@@ -83,8 +83,14 @@ def lire_volumes_par_ville(executer=None, lire_dump=None,
     apostrophes. C'est a SQLite de lire du SQL. Mesure sur le vrai dump
     (15,5 Mo, 85 885 lignes) : 0,7 s en tout, rien a optimiser.
 
-    Rend [] si le dump est illisible : le critere global reste, lui, valable,
-    et une vigie qui leve serait une vigie muette.
+    Un dump illisible LEVE, et n'est pas avale en rendant [] : sans cela,
+    « aucune ville effondree » et « je n'ai rien pu lire » seraient le meme
+    silence -- l'angle mort exact que ce critere existe pour fermer. C'est
+    `main` qui le rattrape, envoie quand meme les alertes du critere global
+    et rend un code non nul pour que GitHub envoie son courriel d'echec.
+
+    Imprime ce qu'elle a lu : c'est la seule trace qui distingue, dans le
+    journal du job, un critere qui s'est tu d'un critere qui n'a pas tourne.
     """
     if lire_dump is None:
         executer = executer or _executer
@@ -103,15 +109,16 @@ def lire_volumes_par_ville(executer=None, lire_dump=None,
                                          LIMIT ?)
              GROUP BY date_collecte, ville_depart
              ORDER BY date_collecte DESC""", (nb_releves,)).fetchall()
-    except sqlite3.Error:
-        return []
     finally:
         conn.close()
 
     volumes = {}
     for date, ville, nombre in lignes:
         volumes.setdefault(date, {})[ville] = nombre
-    return [volumes[date] for date in sorted(volumes, reverse=True)]
+    volumes = [volumes[date] for date in sorted(volumes, reverse=True)]
+    villes = {ville for releve in volumes for ville in releve}
+    print(f"Volumes lus : {len(volumes)} relevé(s), {len(villes)} ville(s)")
+    return volumes
 
 
 def juger_par_ville(volumes: list, fraction_min: float = FRACTION_MIN,
@@ -208,19 +215,28 @@ def bilan_hebdo(releves: list, maintenant: datetime):
 
 
 def main(argv=None, releves=None, envoyer=None, maintenant=None,
-         volumes=None) -> int:
+         volumes=None, lire_volumes=None) -> int:
     """Lit l'etat, envoie ce qu'il y a a dire, rend le code de retour.
 
     Un probleme constate n'est PAS un echec de la vigie : elle a fait son
-    travail, elle rend 0. Elle ne rend 1 que si elle n'a pas pu parler --
-    la, GitHub envoie son courriel d'echec, dernier filet.
+    travail, elle rend 0. Elle ne rend 1 que si elle n'a pas pu parler ou
+    pas pu juger -- la, GitHub envoie son courriel d'echec, dernier filet.
+    Un dump illisible tombe dans ce cas : le critere par ville est alors
+    inactif, et l'ignorer le rendrait indiscernable d'un critere serein.
     """
     argv = sys.argv[1:] if argv is None else argv
     maintenant = maintenant or datetime.now(timezone.utc)
     if releves is None:
         releves = lire_releves()
+    illisible = False
     if volumes is None:
-        volumes = lire_volumes_par_ville()
+        try:
+            volumes = (lire_volumes or lire_volumes_par_ville)()
+        except sqlite3.Error as erreur:
+            # on continue : les alertes du critere global, elles, restent
+            # dues -- mais le code de retour dira que la vigie est borgne
+            print(f"ECHEC : dump illisible ({erreur}) -- critère par ville inactif")
+            volumes, illisible = [], True
     if envoyer is None:
         # importe ici : hub_deals_db lit l'environnement Travelpayouts au
         # chargement, et le coeur de la vigie ne doit pas en dependre
@@ -236,13 +252,13 @@ def main(argv=None, releves=None, envoyer=None, maintenant=None,
     for message in messages:
         print(message)
     if "--sans-envoi" in argv:
-        return 0
+        return 1 if illisible else 0
 
     for message in messages:
         if not envoyer(message):
             print("ECHEC : message non envoye")
             return 1
-    return 0
+    return 1 if illisible else 0
 
 
 if __name__ == "__main__":

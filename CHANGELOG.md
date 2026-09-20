@@ -24,6 +24,11 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Pro
   `CREATE TABLE`, et un lien contient virgules et apostrophes. Mesuré sur le vrai dump (15,5 Mo,
   85 885 lignes) : 0,7 s. Témoin vérifié sur les données réelles — rien à signaler tel quel,
   alerte nommant Istanbul dès qu'on retire ses lignes du dernier relevé.
+- **Un dump illisible n'est plus avalé.** Premier jet : l'échec de lecture rendait une liste
+  vide, donc « aucune ville effondrée » — la vigie se serait tue sur sa propre panne, l'angle
+  mort exact que ce critère ferme, et le job vert n'aurait rien prouvé. Elle imprime désormais ce
+  qu'elle a lu (`Volumes lus : 11 relevé(s), 13 ville(s)`), envoie quand même les alertes du
+  critère global, puis rend un code non nul pour que GitHub envoie son courriel d'échec.
 
 ### Corrigé
 - **« Barcelone (depuis Istanbul, au depart de Istanbul) »** : un abonné résident part du hub,
