@@ -1,0 +1,20 @@
+# Service d'ecoute Telegram (webhook). Voir la spec du 2026-09-20.
+services:
+  - type: web
+    name: hub-deals-bot
+    runtime: python
+    plan: free          # s'endort apres 15 min ; Telegram reessaie au reveil
+    buildCommand: pip install -r requirements-web.txt
+    startCommand: gunicorn web_bot:app --bind 0.0.0.0:$PORT --workers 1 --timeout 30
+    healthCheckPath: /sante
+    envVars:
+      # sync: false -- renseignees a la main dans le tableau de bord, elles
+      # ne doivent jamais entrer au depot.
+      - key: HUB_DEALS_ABONNES_URL
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: HUB_DEALS_CODE_INVITATION
+        sync: false
+      - key: TELEGRAM_WEBHOOK_SECRET
+        sync: false

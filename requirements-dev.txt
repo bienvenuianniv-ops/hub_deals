@@ -1,3 +1,5 @@
-# Dependances de developpement : celles du programme, plus le lanceur de tests.
--r requirements.txt
+# Dependances de developpement : celles du service web (qui incluent
+# celles du programme), plus le lanceur de tests. Les tests couvrent
+# aussi web_bot.py, donc Flask doit etre installe pour les lancer.
+-r requirements-web.txt
 pytest>=8,<10

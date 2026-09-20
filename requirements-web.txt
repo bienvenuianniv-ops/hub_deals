@@ -1,0 +1,5 @@
+# Dependances du SEUL service webhook. Le releve ne doit pas dependre
+# d'un serveur web pour tourner : il garde requirements.txt.
+-r requirements.txt
+flask>=3,<4
+gunicorn>=23,<24
