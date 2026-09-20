@@ -2,6 +2,38 @@
 
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Projet personnel sans versionnage sémantique — entrées datées.
 
+## 2026-09-20
+
+### Ajouté
+- **Les tests tournent enfin sur GitHub** (`.github/workflows/tests.yml`). Aucun job ne les
+  lançait : seule la vigie du relevé tournait hors du portable, et une régression ne se voyait
+  qu'à condition de penser à lancer `pytest` à la main. Runner **Windows et non Linux** : le
+  relevé tourne sous Windows (tâche planifiée, `pythonw.exe`) et plusieurs tests appellent
+  `tasklist` ou `pythonw.exe` sans garde de plateforme — sur `ubuntu-latest` ils échoueraient ou
+  seraient sautés sans rien prouver. Le dépôt est public, les minutes Windows ne coûtent rien.
+  Premier run vert : 346 tests, 0 sauté, 3,1 s. `requirements-dev.txt` fige le lanceur de tests.
+- **La vigie juge maintenant chaque ville séparément** (`juger_par_ville`). Le critère global ne
+  voit pas la panne d'une partie du parc : l'angle mort noté hier — les lignes résidentes
+  disparaissent, le relevé garde 76 % de son volume habituel, sous le seuil de moitié il ne se
+  passe rien — est fermé. Chaque ville est comparée à **sa propre** médiane, absences comptées
+  comme zéro, si bien qu'une ville nouvelle ou intermittente ne déclenche rien ; en dessous de
+  10 lignes de médiane, une ville n'est pas jugée (la plus petite en tient 12, une variation du
+  cache de l'API ferait du bruit). Toutes les villes effondrées tiennent dans **un seul** message.
+  Les volumes viennent du dump déjà poussé, chargé dans une base en mémoire plutôt que découpé à
+  la main : `ville_depart` a été ajoutée par `ALTER TABLE` et n'est donc pas à sa place dans le
+  `CREATE TABLE`, et un lien contient virgules et apostrophes. Mesuré sur le vrai dump (15,5 Mo,
+  85 885 lignes) : 0,7 s. Témoin vérifié sur les données réelles — rien à signaler tel quel,
+  alerte nommant Istanbul dès qu'on retire ses lignes du dernier relevé.
+
+### Corrigé
+- **« Barcelone (depuis Istanbul, au depart de Istanbul) »** : un abonné résident part du hub,
+  répéter sa ville ne disait rien de plus. Visible sur les quatre premières alertes résidentes
+  du 20/09. Une ville rabattue garde ses deux mentions, qui sont deux informations différentes.
+- `actions/checkout` et `actions/setup-python` passent en v7 dans les deux workflows : les v4/v5
+  visaient Node 20, que GitHub a déprécié et force déjà sur Node 24.
+
+346 → 363 tests.
+
 ## 2026-09-19
 
 ### Ajouté
@@ -42,7 +74,8 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Pro
   seuil), et l'insertion unique des 16 156 lignes de reprise ne fausse pas la médiane. En
   revanche, une disparition totale et silencieuse des lignes résidentes ramènerait le relevé à
   ~900 lignes, soit 70 % de la médiane — au-dessus du seuil de 50 %, donc sans alerte. **La
-  vigie ne couvre pas la panne de cette fonctionnalité.**
+  vigie ne couvre pas la panne de cette fonctionnalité.** *(Fermé le 2026-09-20 : voir le
+  critère par ville.)*
 
 308 → 346 tests.
 

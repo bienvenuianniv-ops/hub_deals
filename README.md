@@ -196,7 +196,15 @@ Elle ne lit que ce que le portable a déjà poussé : la date et le volume des c
 |---|---|
 | Plus de sauvegarde depuis 26 h | « plus de relevé depuis N h » |
 | Dernier relevé sous la moitié de la médiane des 10 précédents | « relevé anormalement court » |
+| Une ville sous la moitié de **sa propre** médiane | « N ville(s) au volume effondré », toutes nommées dans un seul message |
 | Rien à signaler | **silence** — sauf le lundi, bilan d'une ligne |
+
+Le critère par ville existe parce que le volume total ne voit pas la panne d'une partie du parc :
+si les huit villes qui ne partent que de leur propre hub disparaissaient, le relevé garderait
+76 % de son volume habituel et passerait pour normal. Chaque ville est jugée contre sa propre
+médiane, les absences comptant pour zéro — une ville nouvelle ou intermittente a donc une médiane
+basse et ne déclenche rien. En dessous de 10 lignes de médiane, une ville n'est pas jugée. Les
+volumes sont lus dans le dump déjà poussé, chargé dans une base SQLite en mémoire (0,7 s).
 
 Le silence est donc normal. Le bilan du lundi est le signe de vie de la vigie elle-même, et si la
 vigie plante, GitHub envoie un courriel d'échec : sa panne ne peut pas être silencieuse.
@@ -213,6 +221,11 @@ Secrets attendus dans le dépôt (`Settings > Secrets and variables > Actions`) 
 ```
 python -m unittest discover -s tests -v
 ```
+
+Ils tournent aussi à chaque poussée, via `.github/workflows/tests.yml`. Le runner est
+**Windows** : le relevé tourne sous Windows et plusieurs tests appellent `tasklist` ou
+`pythonw.exe`, qui n'existent pas ailleurs — sur Linux ils échoueraient ou seraient sautés sans
+rien prouver. Vérifier `0 skipped` dans la sortie fait partie du contrôle.
 
 ## Automatisation
 
