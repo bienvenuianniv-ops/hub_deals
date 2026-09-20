@@ -34,9 +34,43 @@ COPIES_LOCALES_GARDEES = 5
 DELAI_COMMANDE = 300   # secondes ; un push de sauvegarde en prend quelques-unes
 
 
-def generer_dump(conn: sqlite3.Connection) -> str:
-    """Rend le contenu de la base sous forme de script SQL complet."""
-    return "\n".join(conn.iterdump())
+# Tables qui ne doivent JAMAIS sortir : le dump part sur un depot public.
+# Constate le 2026-09-20 -- chat_id Telegram et prenom de chaque abonne y
+# etaient publies deux fois par jour. Recruter, c'etait publier.
+TABLES_PRIVEES = ("abonnes", "etat_bot")
+
+
+def generer_dump(conn: sqlite3.Connection,
+                 tables_privees=TABLES_PRIVEES) -> str:
+    """Rend le contenu de la base sous forme de script SQL, sans les
+    donnees des tables privees.
+
+    La base est d'abord copiee en memoire, puis les tables privees y sont
+    VIDEES avant le dump. On ne filtre pas le SQL produit ligne a ligne :
+    une valeur peut contenir apostrophes, virgules ou sauts de ligne, et
+    une regex qui laisse passer une seule ligne publie une personne. Ici
+    la garantie est structurelle -- ce qui n'est plus dans la copie ne
+    peut pas etre dans le dump.
+
+    Le schema est conserve : une base restauree doit rester utilisable par
+    le bot, qui ecrirait sinon dans une table inexistante.
+
+    Mesure sur la vraie base (15,5 Mo, 85 885 lignes) : environ 0,5 s.
+
+    Contrepartie assumee, a lever par l'hebergement des abonnes hors du
+    portable : les abonnes ne sont plus sauvegardes hors machine.
+    """
+    copie = sqlite3.connect(":memory:")
+    try:
+        conn.backup(copie)
+        presentes = {ligne[0] for ligne in copie.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'")}
+        for table in tables_privees:
+            if table in presentes:
+                copie.execute(f"DELETE FROM {table}")
+        return "\n".join(copie.iterdump())
+    finally:
+        copie.close()
 
 
 def _horodatage() -> str:

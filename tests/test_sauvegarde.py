@@ -28,6 +28,20 @@ def _base_temoin(chemin):
             rabattement, total_estime, date_depart, lien)
             VALUES (?, 'Dakar', 'Paris', 'LON', 'Londres', ?, 300, ?, '', '/x')""",
             (f"2026-08-{10+i} 10:00:00", 100 + i, 400 + i))
+    # Tables privees : le dump part sur un depot PUBLIC, elles ne doivent
+    # pas en sortir. La base temoin les porte pour que les tests puissent
+    # le prouver plutot que le supposer.
+    conn.execute("""
+        CREATE TABLE abonnes (
+            chat_id INTEGER PRIMARY KEY, prenom TEXT, ville_depart TEXT,
+            actif INTEGER, inscrit_le TEXT, modifie_le TEXT,
+            motif_inactif TEXT)
+    """)
+    conn.execute("""INSERT INTO abonnes VALUES
+        (862000001, 'Awa', 'Paris', 1, '2026-09-15T15:23:36+00:00',
+         '2026-09-15T15:23:58+00:00', NULL)""")
+    conn.execute("CREATE TABLE etat_bot (clef TEXT PRIMARY KEY, valeur TEXT)")
+    conn.execute("INSERT INTO etat_bot VALUES ('derniere_ecoute', '2026-09-20')")
     conn.commit()
     return conn
 
@@ -48,6 +62,45 @@ class TestGenerationDuDump(unittest.TestCase):
         self.assertIn("CREATE TABLE", dump)
         self.assertIn("INSERT INTO", dump)
         self.assertIn("Londres", dump)
+
+    def test_aucun_abonne_ne_part_dans_le_dump(self):
+        """Le dump est pousse sur un depot PUBLIC. Constate le 2026-09-20 :
+        chat_id Telegram et prenom y etaient publies deux fois par jour.
+        Recruter des abonnes, c'etait publier leur identite."""
+        dump = sauvegarde.generer_dump(self.conn)
+
+        self.assertNotIn("862000001", dump)
+        self.assertNotIn("Awa", dump)
+        self.assertNotIn("derniere_ecoute", dump)
+
+    def test_le_schema_des_tables_privees_reste(self):
+        """Sans lui, une base restauree n'aurait plus de table abonnes et
+        le bot planterait au premier message."""
+        dump = sauvegarde.generer_dump(self.conn)
+
+        self.assertIn("CREATE TABLE abonnes", dump)
+        self.assertIn("CREATE TABLE etat_bot", dump)
+
+    def test_une_base_restauree_accepte_un_abonne(self):
+        """La preuve que le schema conserve est utilisable, et pas
+        seulement present dans le texte."""
+        restauree = sqlite3.connect(":memory:")
+        restauree.executescript(sauvegarde.generer_dump(self.conn))
+
+        restauree.execute("""INSERT INTO abonnes VALUES
+            (1, 'Essai', 'Paris', 1, '2026-09-20', '2026-09-20', NULL)""")
+
+        self.assertEqual(
+            restauree.execute("SELECT COUNT(*) FROM abonnes").fetchone()[0], 1)
+        restauree.close()
+
+    def test_la_base_d_origine_garde_ses_abonnes(self):
+        """Le dump travaille sur une copie : sauvegarder ne doit pas
+        desabonner tout le monde."""
+        sauvegarde.generer_dump(self.conn)
+
+        self.assertEqual(
+            self.conn.execute("SELECT COUNT(*) FROM abonnes").fetchone()[0], 1)
 
     def test_le_dump_est_restaurable_a_l_identique(self):
         """Le test qui compte vraiment : une sauvegarde qu'on n'a jamais
