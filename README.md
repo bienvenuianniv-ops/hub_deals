@@ -219,6 +219,29 @@ python vigie.py --sans-envoi   # juger l'état sans rien envoyer
 Secrets attendus dans le dépôt (`Settings > Secrets and variables > Actions`) :
 `TELEGRAM_BOT_TOKEN` et `TELEGRAM_CHAT_ID`.
 
+## Clics affiliés
+
+`clics.py` lit les statistiques Travelpayouts par Sous-ID et par jour, sans ouvrir le tableau de
+bord et sans cliquer sur quoi que ce soit — ouvrir un vrai lien pour « vérifier » fausserait les
+compteurs.
+
+```bash
+python clics.py                      # les 30 derniers jours
+python clics.py --sub-id dakar --depuis 2026-09-16
+```
+
+Trois colonnes, parce que trois choses différentes se ressemblent dans un rapport :
+
+| Colonne | Ce que c'est |
+|---|---|
+| **clics** | redirection par `aviasales.tpk.ro` non marquée robot — c'est ce que compte le tableau de bord |
+| **robots** | la même chose, marquée `is_bot` : aperçus de liens générés par Telegram, sondes. Exclus des clics, montrés plutôt qu'effacés |
+| **directs** | arrivée sur `aviasales.com?marker=…` sans redirection. **Jamais** comptée comme clic — la raison d'être des liens courts |
+
+Ce module est né de l'écart « `dakar` = 4 clics pour 1 attendu » du 16/09, resté inexpliqué
+quatre jours : l'API donne chaque événement à la seconde, et les quatre étaient quatre vraies
+ouvertures du même lien, avec quatre `trace_id` distincts.
+
 ## Tests
 
 ```

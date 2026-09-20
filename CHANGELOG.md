@@ -30,6 +30,30 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Pro
   qu'elle a lu (`Volumes lus : 11 relevé(s), 13 ville(s)`), envoie quand même les alertes du
   critère global, puis rend un code non nul pour que GitHub envoie son courriel d'échec.
 
+- **`clics.py` : lire les clics affiliés sans passer par le tableau de bord.** Né de l'enquête
+  ci-dessous. Compte les redirections `tpk.ro` hors robots (la définition exacte de la colonne
+  Clicks), et sépare trois choses qu'un rapport confond : clics, trafic robot (aperçus Telegram,
+  sondes) et liens directs, qui ne sont jamais comptés. `--sub-id` et `--depuis` ; pagination,
+  parce qu'un compte partiel se lirait comme un compte complet ; une erreur HTTP lève au lieu de
+  rendre « 0 clic », indiscernable d'un vrai zéro. Contrôle : l'outil reproduit exactement les
+  chiffres relevés à la main (`dakar` 4 le 16/09, 1 le 17/09).
+
+### Expliqué
+- **L'écart « `dakar` = 4 clics pour 1 attendu » du 16/09 n'était pas un écart.** Resté ouvert
+  quatre jours faute de pouvoir regarder le détail. L'API `statistics/v1/execute_query` donne
+  chaque événement à la seconde : les quatre sont quatre redirections non-robot, à 13:47:34,
+  13:51:05, 13:51:17 et 13:51:39, depuis un mobile au Sénégal, avec **quatre `trace_id`
+  différents** — donc quatre passages distincts par `tpk.ro`, pas un rechargement de page. Le
+  lien `proprietaire` n'a été ouvert qu'une fois (13:50:09), et c'est ce contraste qui rendait
+  l'écart suspect. Le +1 du 17/09 s'explique pareil : un seul `redirect` non-robot à 12:56:05.
+  **Aucun bug, rien à corriger dans le code.**
+- Deux constats que ces données confirment, mesure à l'appui : l'anti-robot fait son travail (mes
+  `curl` et les aperçus Telegram sont tous `is_bot=1`, hors des compteurs — la consigne « ne plus
+  ouvrir les liens réels » reste de l'hygiène, pas une correction de chiffres) ; et les liens
+  directs produisent un `external` sans aucun `redirect`, à `traffic_source` 0. Le clic du 15/09
+  à 14:44:30 que l'on croyait perdu **était bien enregistré**, mais dans une catégorie que la
+  colonne Clicks ignore. Ce qui n'avait été qu'inféré le 16/09 est désormais prouvé.
+
 ### Corrigé
 - **« Barcelone (depuis Istanbul, au depart de Istanbul) »** : un abonné résident part du hub,
   répéter sa ville ne disait rien de plus. Visible sur les quatre premières alertes résidentes
@@ -37,7 +61,7 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Pro
 - `actions/checkout` et `actions/setup-python` passent en v7 dans les deux workflows : les v4/v5
   visaient Node 20, que GitHub a déprécié et force déjà sur Node 24.
 
-346 → 363 tests.
+346 → 381 tests.
 
 ## 2026-09-19
 
