@@ -53,6 +53,16 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Pro
   directs produisent un `external` sans aucun `redirect`, à `traffic_source` 0. Le clic du 15/09
   à 14:44:30 que l'on croyait perdu **était bien enregistré**, mais dans une catégorie que la
   colonne Clicks ignore. Ce qui n'avait été qu'inféré le 16/09 est désormais prouvé.
+- **Les 4 « directs » du 17/09 ne viennent d'aucun lien du bot actuel.** Ils n'ont ni `promo_id`
+  4114 (notre outil de liens) ni `traffic_source` 574520 (le projet), et leur `trace_id` vaut leur
+  propre `action_id` — un UUIDv7 dont l'horodatage encodé est celui de l'événement à la seconde
+  (`01a0af6f-b71b` → 12:55:29), donc rien ne les précède. Profil identique au clic du 15/09 sur un
+  lien direct : ce sont des visites rattachées au marker déposé par nos **anciens messages
+  Telegram**, d'avant le passage aux liens courts, qui restent cliquables indéfiniment. Sans
+  conséquence : le Sous-ID est présent, une réservation serait créditée ; seul le *clic*, qui ne
+  rapporte rien en soi, n'est pas compté. Ce que les données ne permettent pas de trancher :
+  ouverture d'un ancien lien ou nouvelle recherche dans une session déjà attribuée — les deux
+  portent `sub_type: search` et `page_url` est vide.
 
 ### Corrigé
 - **« Barcelone (depuis Istanbul, au depart de Istanbul) »** : un abonné résident part du hub,

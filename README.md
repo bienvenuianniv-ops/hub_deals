@@ -236,7 +236,14 @@ Trois colonnes, parce que trois choses différentes se ressemblent dans un rappo
 |---|---|
 | **clics** | redirection par `aviasales.tpk.ro` non marquée robot — c'est ce que compte le tableau de bord |
 | **robots** | la même chose, marquée `is_bot` : aperçus de liens générés par Telegram, sondes. Exclus des clics, montrés plutôt qu'effacés |
-| **directs** | arrivée sur `aviasales.com?marker=…` sans redirection. **Jamais** comptée comme clic — la raison d'être des liens courts |
+| **directs** | visite rattachée au marker déposé par un lien **direct** — en pratique nos messages Telegram d'avant le 16/09, qui restent cliquables indéfiniment. **Jamais** comptée comme clic, mais le Sous-ID est là : une réservation serait bien créditée |
+
+Les trois se distinguent de façon nette, vérifié le 20/09 : un événement issu d'un lien court porte
+`promo_id` 4114 et `traffic_source` 574520, et partage son `trace_id` avec sa redirection ; un
+direct n'a ni l'un ni l'autre et son `trace_id` vaut son propre `action_id` — un UUIDv7 dont
+l'horodatage encodé est celui de l'événement, donc rien ne le précède. Ce que les données ne
+disent pas : si un direct est l'ouverture d'un ancien lien ou une nouvelle recherche dans une
+session déjà attribuée. Les deux portent `sub_type: search` et `page_url` est vide.
 
 Ce module est né de l'écart « `dakar` = 4 clics pour 1 attendu » du 16/09, resté inexpliqué
 quatre jours : l'API donne chaque événement à la seconde, et les quatre étaient quatre vraies

@@ -15,9 +15,23 @@ Ce que compte le tableau de bord, et donc ce module :
   clic   = type « redirect » (passage par aviasales.tpk.ro) NON marque robot
   robot  = le meme, marque is_bot -- apercu de lien Telegram, sonde, curl ;
            exclu de la colonne Clicks, montre ici a part plutot qu'efface
-  direct = type « external » a traffic_source 0 : un lien
-           aviasales.com?marker=... ouvert sans redirection. Il n'entre PAS
-           dans les clics -- c'est tout l'interet des liens courts.
+  direct = type « external » sans redirection prealable : une visite
+           rattachee au marker depose par un lien DIRECT
+           (aviasales.com?marker=...), en pratique nos anciens messages
+           Telegram d'avant le 2026-09-16, qui restent cliquables pour
+           toujours. N'entre PAS dans les clics -- tout l'interet des liens
+           courts. L'attribution, elle, tient : le sub_id est present, une
+           reservation serait creditee.
+
+           Ces evenements se reconnaissent a trois marques, verifiees le
+           2026-09-20 : ni promo_id (4114 = notre outil de liens), ni
+           traffic_source (574520 = le projet), et un trace_id egal a leur
+           propre action_id -- un UUIDv7 dont l'horodatage encode est celui
+           de l'evenement, donc rien ne les precede.
+
+           Ce qu'ils ne disent PAS : si c'est l'ouverture d'un ancien lien
+           ou une nouvelle recherche dans une session deja attribuee. Les
+           deux portent sub_type « search » et page_url est vide.
 
 L'arrivee (« external ») qui suit un clic partage son trace_id : c'est une
 seule visite, elle n'est pas recomptee.
@@ -122,8 +136,10 @@ def formater(compte: dict) -> str:
     lignes.append("clics = redirections tpk.ro hors robots (ce que compte le "
                   "tableau de bord)")
     lignes.append("robots = apercus Telegram, sondes : exclus des clics")
-    lignes.append("directs = liens aviasales.com sans redirection : jamais "
-                  "comptes comme clics")
+    lignes.append("directs = visites rattachees a un lien direct (anciens "
+                  "messages) : jamais comptees comme clics,")
+    lignes.append("          mais le sub_id est la, donc une reservation "
+                  "serait bien creditee")
     return "\n".join(lignes)
 
 
