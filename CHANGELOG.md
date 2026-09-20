@@ -38,6 +38,28 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Pro
   rendre « 0 clic », indiscernable d'un vrai zéro. Contrôle : l'outil reproduit exactement les
   chiffres relevés à la main (`dakar` 4 le 16/09, 1 le 17/09).
 
+### Sécurité
+- **Les abonnés ne partent plus sur le dépôt public.** `conn.iterdump()` dumpe toute la base :
+  la table `abonnes` — `chat_id` Telegram et prénom — était poussée sur GitHub à chaque relevé,
+  deux fois par jour, et `etat_bot` avec elle. Constaté en cadrant le recrutement d'abonnés à
+  Paris : inviter des inconnus revenait à publier leur identité Telegram. `generer_dump` copie
+  désormais la base en mémoire et **vide** les tables privées avant le dump — pas de filtrage du
+  SQL produit, où une valeur contenant une apostrophe ou un saut de ligne suffirait à laisser
+  passer une personne. Le schéma est conservé, et un test inscrit un abonné dans une base
+  restaurée pour le prouver. Mesure sur la vraie base : 15,5 Mo en 0,9 s, 85 885 offres intactes.
+- **Historique de la branche `sauvegardes` réécrit.** 9 commits sur 63 contenaient des lignes
+  d'abonnés (depuis le 16/09) ; ils ont été reconstruits sans elles, messages, auteurs et dates
+  préservés. Les 54 commits antérieurs gardent leur SHA, donc la vigie garde son historique
+  (vérifié après coup : 11 relevés, 13 villes). Chaque dump nettoyé a été rechargé dans SQLite et
+  recompté avant d'être accepté. Contrôle final : le dump régénéré localement est **octet pour
+  octet identique** au dump réécrit (SHA-256 `721d17ac…`, 15 461 169 octets).
+  ⚠️ Un push forcé ne purge pas GitHub : les anciens objets restent atteignables par SHA jusqu'au
+  ramassage. L'impact reste faible — un `chat_id` n'est exploitable que par un bot avec qui la
+  personne a déjà une conversation.
+- ⚠️ **Contrepartie assumée : les abonnés ne sont plus sauvegardés hors machine.** Le dump public
+  en était la seule copie. Sans conséquence à un abonné, mais **il ne faut pas recruter avant**
+  d'avoir déplacé les abonnés vers un magasin privé — ce que le chantier d'hébergement fera.
+
 ### Expliqué
 - **L'écart « `dakar` = 4 clics pour 1 attendu » du 16/09 n'était pas un écart.** Resté ouvert
   quatre jours faute de pouvoir regarder le détail. L'API `statistics/v1/execute_query` donne

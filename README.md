@@ -163,7 +163,7 @@ Deux mécanismes, pour **deux risques différents** :
 | | Protège de | Où |
 |---|---|---|
 | Copie locale | erreur logique, migration ratée | même disque, 5 copies gardées |
-| Dump distant | perte de la machine, disque mort | branche `sauvegardes` du dépôt privé |
+| Dump distant | perte de la machine, disque mort | branche `sauvegardes` du dépôt — **public** |
 
 La copie locale ne protège **pas** d'une panne matérielle : elle vit sur le même disque. Le dump
 distant est le seul qui survit à la perte du portable. Il est poussé automatiquement à la fin de
@@ -171,6 +171,12 @@ chaque relevé, et une panne de git ou de réseau n'interrompt jamais la collect
 
 Le dump est un fichier SQL texte : git l'encode en deltas efficaces, et il se restaure sans
 dépendre du format binaire de SQLite.
+
+**Le dépôt est public, donc le dump ne contient aucune donnée personnelle.** `generer_dump` copie
+la base en mémoire et vide `abonnes` et `etat_bot` avant de dumper — le schéma reste, les lignes
+partent. Ajouter une table qui contient des données d'abonnés impose de l'ajouter à
+`TABLES_PRIVEES`. Conséquence à connaître : **les abonnés ne sont sauvegardés nulle part**, tant
+qu'ils vivent dans cette base SQLite.
 
 ```bash
 python sauvegarde.py --sauver                       # copie locale + dump distant
