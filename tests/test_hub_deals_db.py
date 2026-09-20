@@ -866,6 +866,21 @@ class TestBlocDAlerte(unittest.TestCase):
         self.assertIn("Rabattement mesure ce jour : 418", bloc)
         self.assertNotIn("- economie", bloc)
 
+    def test_un_resident_du_hub_ne_repete_pas_sa_ville(self):
+        """Un abonne residant dans le hub part du hub : « (depuis Istanbul,
+        au depart de Istanbul) » dit deux fois la meme chose. Observe sur les
+        4 premieres alertes residentes du 2026-09-20, toutes depuis Istanbul."""
+        bloc = hub_deals_db.construire_bloc([self._a("Abidjan", 975, 31.3)])
+
+        self.assertIn("<b>Rome</b> (depuis Abidjan)\n", bloc)
+        self.assertNotIn("au depart de", bloc)
+
+    def test_une_ville_rabattue_garde_ses_deux_mentions(self):
+        """Le hub et la ville de depart different : les deux sont utiles."""
+        bloc = hub_deals_db.construire_bloc([self._a("Dakar", 975, 31.3)])
+
+        self.assertIn("(depuis Abidjan, au depart de Dakar)", bloc)
+
 
 class TestNotificationAvecRabattementMesure(unittest.TestCase):
     """envoyer_telegram est remplace par un espion : aucun envoi reel."""

@@ -1019,9 +1019,13 @@ def construire_bloc(groupe: list) -> str:
             note = f"Rabattement mesure ce jour : {a['rabattement_mesure']:.0f}\u20ac"
         else:
             note = "Rabattement estime, non mesure ce jour"
+        # Un resident du hub part du hub : repeter sa ville ne dit rien de
+        # plus (« depuis Istanbul, au depart de Istanbul »).
+        provenance = a["hub"]
+        if a["ville_depart"] != a["hub"]:
+            provenance += f", au depart de {a['ville_depart']}"
         return (
-            f"\n<b>{a['destination']}</b> (depuis {a['hub']}, "
-            f"au depart de {a['ville_depart']})\n"
+            f"\n<b>{a['destination']}</b> (depuis {provenance})\n"
             f"{a['prix_actuel']:.0f}\u20ac (moyenne habituelle : "
             f"{a['moyenne_historique']:.0f}\u20ac, -{a['baisse_pct']:.0f}%)\n"
             f"Economie : {a['economie']:.0f}\u20ac\n"
