@@ -164,6 +164,35 @@ class TestOuverturePostgres(unittest.TestCase):
         self.assertEqual(abonne["ville_depart"], "Paris")
         self.assertTrue(abonne["actif"])
 
+    def test_un_role_sans_droit_de_creation_peut_ouvrir(self):
+        """En production, le role du bot n'a que SELECT/INSERT/UPDATE : il
+        ne peut PAS creer de table. Or ouvrir() lance un CREATE TABLE IF
+        NOT EXISTS a chaque connexion -- constate le 2026-09-20 sur la
+        vraie base Neon, ou ce role se voit refuser CREATE.
+
+        Les tables existent deja : ouvrir() ne doit donc rien tenter."""
+        mdp = "essai_role_restreint_2026"
+        proprietaire = magasin.ouvrir(url=self.url)
+        proprietaire.execute("DROP ROLE IF EXISTS essai_restreint")
+        proprietaire.execute(f"CREATE ROLE essai_restreint LOGIN PASSWORD '{mdp}'")
+        proprietaire.execute(
+            "GRANT SELECT, INSERT, UPDATE ON abonnes, etat_bot TO essai_restreint")
+        proprietaire.commit()
+        restreinte = self.url.split("://", 1)[1].split("@", 1)[1]
+
+        try:
+            conn = magasin.ouvrir(url=f"postgresql://essai_restreint:{mdp}@{restreinte}")
+            nb = conn.execute("SELECT COUNT(*) FROM abonnes").fetchone()[0]
+            conn.close()
+        finally:
+            proprietaire.execute(
+                "REVOKE ALL ON abonnes, etat_bot FROM essai_restreint")
+            proprietaire.execute("DROP ROLE IF EXISTS essai_restreint")
+            proprietaire.commit()
+            proprietaire.close()
+
+        self.assertEqual(nb, 0)
+
     def test_le_temoin_d_etat_s_ecrase(self):
         import abonnes
         abonnes.noter_ecoute(self.conn, "2026-09-20T10:00:00+00:00")

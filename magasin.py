@@ -108,7 +108,30 @@ def ouvrir(url=None, chemin="flight_deals.db"):
     else:
         conn = sqlite3.connect(chemin, timeout=60)
         dialecte = "sqlite"
-    for instruction in _DDL[dialecte]:
-        conn.execute(instruction)
-    conn.commit()
+    if _tables_manquantes(conn, dialecte):
+        for instruction in _DDL[dialecte]:
+            conn.execute(instruction)
+        conn.commit()
     return conn
+
+
+def _tables_manquantes(conn, dialecte: str) -> bool:
+    """Les tables sont-elles a creer ?
+
+    Sans cette question, ouvrir() lancerait un CREATE TABLE IF NOT EXISTS
+    a chaque connexion. En production le role du bot n'a que
+    SELECT/INSERT/UPDATE : Postgres lui refuse CREATE meme quand la table
+    existe deja, et la connexion echouerait -- constate sur la vraie base
+    le 2026-09-20. Les tables sont creees une fois, a la main, par un role
+    qui en a le droit.
+    """
+    if dialecte == "sqlite":
+        trouvees = conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' "
+            "AND name IN ('abonnes', 'etat_bot')").fetchone()[0]
+    else:
+        trouvees = conn.execute(
+            "SELECT COUNT(*) FROM information_schema.tables "
+            "WHERE table_schema = current_schema() "
+            "AND table_name IN ('abonnes', 'etat_bot')").fetchone()[0]
+    return trouvees < 2
