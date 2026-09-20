@@ -31,6 +31,9 @@ FRACTION_MIN = 0.5      # spec : moitie de la mediane des 10 precedents
 MIN_HISTORIQUE = 5      # en dessous, « l'habitude » n'a pas de sens
 MIN_LIGNES_VILLE = 10   # mesure : la plus petite ville tient 12 lignes par releve
 
+AGE_ERREUR_MAX_H = 24   # au-dela, l'erreur a ete rattrapee depuis
+EN_ATTENTE_MAX = 5      # quelques messages en vol sont normaux
+
 
 def _executer(commande: list) -> str:
     """Seul appel a git du module. Sortie decodee en UTF-8 (lecon du
@@ -159,6 +162,65 @@ def juger_par_ville(volumes: list, fraction_min: float = FRACTION_MIN,
                                                 "\n".join(effondrees))]
 
 
+def lire_webhook(appeler=None) -> dict:
+    """Etat du webhook vu par Telegram.
+
+    Rend {} si l'appel echoue, et le dit sur la sortie : la vigie doit
+    pouvoir parler du releve meme quand getWebhookInfo ne repond pas. Le
+    critere d'age, lui, ne depend d'aucun reseau.
+    """
+    if appeler is None:
+        def appeler():
+            # importes ici : hub_deals_db lit l'environnement Travelpayouts
+            # au chargement, et le coeur de la vigie ne doit pas en dependre
+            import requests
+
+            import hub_deals_db
+            r = requests.get(
+                f"https://api.telegram.org/bot{hub_deals_db.TELEGRAM_BOT_TOKEN}"
+                "/getWebhookInfo", timeout=20)
+            return r.json().get("result", {}) if r.status_code == 200 else {}
+
+    try:
+        return appeler() or {}
+    except Exception as erreur:
+        print(f"getWebhookInfo indisponible : {erreur}")
+        return {}
+
+
+def juger_webhook(infos: dict, maintenant: datetime) -> list:
+    """Le webhook a remplace le long polling le 2026-09-20 : ce n'est plus
+    « une boucle tourne-t-elle » qu'il faut verifier, mais « Telegram
+    sait-il ou nous joindre ». Un service endormi est normal et ne dit
+    rien ici."""
+    if not infos:
+        return []
+
+    if not infos.get("url"):
+        return ["<b>Vigie : le bot n'a plus d'adresse</b>\n\n"
+                "Telegram ne sait plus où livrer les messages : chaque "
+                "/start part dans le vide.\n\n"
+                "À vérifier : relancer setWebhook."]
+
+    problemes = []
+    erreur_le = infos.get("last_error_date")
+    if erreur_le:
+        age_h = (maintenant.timestamp() - erreur_le) / 3600
+        if age_h <= AGE_ERREUR_MAX_H:
+            problemes.append(
+                f"<b>Vigie : le webhook a échoué il y a {age_h:.0f} h</b>\n\n"
+                f"{infos.get('last_error_message', 'sans message')}\n\n"
+                "À vérifier : le service sur Render (journal, déploiement).")
+
+    en_attente = infos.get("pending_update_count", 0)
+    if en_attente > EN_ATTENTE_MAX:
+        problemes.append(
+            f"<b>Vigie : {en_attente} message(s) non délivrés</b>\n\n"
+            "Ils s'accumulent chez Telegram : le service ne les prend plus.\n\n"
+            "À vérifier : le service sur Render.")
+    return problemes
+
+
 def juger(releves: list, maintenant: datetime,
           age_max_h: float = AGE_MAX_H,
           fraction_min: float = FRACTION_MIN) -> list:
@@ -243,7 +305,9 @@ def main(argv=None, releves=None, envoyer=None, maintenant=None,
         import hub_deals_db
         envoyer = hub_deals_db.envoyer_telegram
 
-    messages = juger(releves, maintenant) + juger_par_ville(volumes)
+    messages = (juger(releves, maintenant)
+                + juger_par_ville(volumes)
+                + juger_webhook(lire_webhook(), maintenant))
     if not messages:
         bilan = bilan_hebdo(releves, maintenant)
         if bilan:

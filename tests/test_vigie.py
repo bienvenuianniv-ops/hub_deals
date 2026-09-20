@@ -5,6 +5,7 @@ import os
 import sqlite3
 import sys
 import unittest
+from unittest import mock
 from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -192,6 +193,14 @@ class TestMain(unittest.TestCase):
 
     def setUp(self):
         self.envoyes = []
+        # Sans ce remplacement, main() interroge le VRAI getWebhookInfo :
+        # constate a l'ajout de la sonde, la classe est passee de 0,2 s a
+        # 10 s et a appele Telegram avec le jeton de la machine.
+        self._lire_webhook = vigie.lire_webhook
+        vigie.lire_webhook = lambda: {}
+
+    def tearDown(self):
+        vigie.lire_webhook = self._lire_webhook
 
     def _envoyer(self, message):
         self.envoyes.append(message)
@@ -266,6 +275,19 @@ class TestMain(unittest.TestCase):
 
         self.assertEqual(len(self.envoyes), 1)
         self.assertNotIn("Rien à signaler", self.envoyes[0])
+
+    def test_un_webhook_muet_part_sur_telegram(self):
+        """Le releve est frais et complet : seule la sonde webhook parle."""
+        mardi = datetime(2026, 9, 22, 15, 0, tzinfo=timezone.utc)
+
+        with mock.patch.object(vigie, "lire_webhook", lambda: {"url": ""}):
+            code = vigie.main(argv=[], releves=self._releves([940] * 11, mardi),
+                              volumes=[], envoyer=self._envoyer,
+                              maintenant=mardi)
+
+        self.assertEqual(code, 0)
+        self.assertEqual(len(self.envoyes), 1)
+        self.assertIn("adresse", self.envoyes[0])
 
     def test_un_dump_illisible_fait_echouer_la_tache(self):
         """Code non nul = courriel d'echec de GitHub : la panne du critere
@@ -471,6 +493,82 @@ class TestJugerParVille(unittest.TestCase):
     def test_sans_volumes_rien_n_est_juge(self):
         """Dump illisible : c'est le critere global qui parle, pas celui-ci."""
         self.assertEqual(vigie.juger_par_ville([]), [])
+
+
+class TestJugerWebhook(unittest.TestCase):
+    """Le webhook est un service EXTERIEUR au portable : un portable
+    eteint ne peut pas signaler qu'un service distant est tombe. C'est
+    donc la vigie qui le surveille."""
+
+    def _infos(self, **champs):
+        base = {"url": "https://hub-deals-bot.onrender.com/telegram",
+                "pending_update_count": 0}
+        base.update(champs)
+        return base
+
+    def test_un_webhook_sain_ne_dit_rien(self):
+        maintenant = datetime(2026, 9, 21, 15, tzinfo=timezone.utc)
+
+        self.assertEqual(vigie.juger_webhook(self._infos(), maintenant), [])
+
+    def test_une_url_vide_est_signalee(self):
+        """Cas le plus grave : Telegram ne sait plus ou nous joindre, et
+        chaque /start part dans le vide."""
+        maintenant = datetime(2026, 9, 21, 15, tzinfo=timezone.utc)
+
+        problemes = vigie.juger_webhook(self._infos(url=""), maintenant)
+
+        self.assertEqual(len(problemes), 1)
+        self.assertIn("adresse", problemes[0].lower())
+
+    def test_une_erreur_recente_est_signalee(self):
+        maintenant = datetime(2026, 9, 21, 15, tzinfo=timezone.utc)
+        recent = int(datetime(2026, 9, 21, 14, tzinfo=timezone.utc).timestamp())
+
+        problemes = vigie.juger_webhook(
+            self._infos(last_error_date=recent,
+                        last_error_message="Connection timed out"), maintenant)
+
+        self.assertEqual(len(problemes), 1)
+        self.assertIn("Connection timed out", problemes[0])
+
+    def test_une_vieille_erreur_ne_dit_rien(self):
+        """Le service s'endort : une erreur d'il y a trois jours a ete
+        rattrapee depuis. N'alerter que sur ce qui dure."""
+        maintenant = datetime(2026, 9, 21, 15, tzinfo=timezone.utc)
+        vieux = int(datetime(2026, 9, 18, 9, tzinfo=timezone.utc).timestamp())
+
+        self.assertEqual(
+            vigie.juger_webhook(self._infos(last_error_date=vieux,
+                                            last_error_message="Bad Gateway"),
+                                maintenant), [])
+
+    def test_des_messages_qui_s_accumulent_sont_signales(self):
+        maintenant = datetime(2026, 9, 21, 15, tzinfo=timezone.utc)
+
+        problemes = vigie.juger_webhook(
+            self._infos(pending_update_count=12), maintenant)
+
+        self.assertEqual(len(problemes), 1)
+        self.assertIn("12", problemes[0])
+
+    def test_sans_infos_rien_n_est_juge(self):
+        """getWebhookInfo injoignable : c'est le critere d'age du releve
+        qui parle, pas celui-ci."""
+        maintenant = datetime(2026, 9, 21, 15, tzinfo=timezone.utc)
+
+        self.assertEqual(vigie.juger_webhook({}, maintenant), [])
+
+
+class TestLireWebhook(unittest.TestCase):
+    def test_une_panne_de_l_appel_ne_leve_pas(self):
+        """La vigie doit pouvoir parler du releve meme si Telegram ne
+        repond pas sur getWebhookInfo."""
+        def appeler_casse():
+            raise RuntimeError("reseau coupe")
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(vigie.lire_webhook(appeler=appeler_casse), {})
 
 
 if __name__ == "__main__":
