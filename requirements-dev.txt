@@ -1,0 +1,3 @@
+# Dependances de developpement : celles du programme, plus le lanceur de tests.
+-r requirements.txt
+pytest>=8,<10

@@ -1,0 +1,32 @@
+name: Tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:        # declenchement a la main, pour verifier
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    # Windows et non Linux : le releve tourne sous Windows (tache planifiee,
+    # pythonw.exe) et plusieurs tests appellent tasklist ou pythonw.exe.
+    # Sur ubuntu ils echoueraient ou seraient sautes sans rien prouver.
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"   # meme version que la machine du releve
+
+      - name: Installer les dependances
+        run: pip install -r requirements-dev.txt
+
+      - name: Lancer les tests
+        # Sans jeton ni base : les tests ne touchent ni le reseau ni
+        # flight_deals.db (ignoree par git), tout est simule.
+        run: python -m pytest tests -q
