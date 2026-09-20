@@ -59,8 +59,15 @@ jobs:
         run: pip install -r requirements-dev.txt
 
       - name: Lancer les tests de persistance
-        # -rs affiche les tests sautes : un saut ici doit se voir, sinon le
-        # job passerait au vert sans avoir rien verifie du dialecte reel.
+        # Un saut ici viderait le job de son sens sans le faire rougir :
+        # -rs les affiche, et l'etape echoue s'il y en a un seul.
         env:
+          HUB_DEALS_EXIGE_PG: "1"
           HUB_DEALS_TEST_PG_URL: postgresql://postgres:essai@localhost:5432/hub_deals_test
-        run: python -m pytest tests/test_magasin.py -q -rs
+        run: |
+          set -o pipefail
+          python -m pytest tests/test_magasin.py -q -rs | tee sortie.txt
+          if grep -q "skipped" sortie.txt; then
+            echo "::error::des tests de persistance ont ete sautes"
+            exit 1
+          fi

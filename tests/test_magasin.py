@@ -91,9 +91,13 @@ class TestGardeCI(unittest.TestCase):
     rendait [] sur un dump illisible.
     """
 
-    def test_en_ci_la_base_postgres_est_obligatoire(self):
-        if not os.environ.get("CI"):
-            self.skipTest("hors CI : la base Postgres est facultative")
+    def test_quand_postgres_est_exige_la_base_doit_etre_la(self):
+        """La garde se declenche sur HUB_DEALS_EXIGE_PG, pose par le seul
+        job qui pretend tester Postgres -- et NON sur CI, qui vaut 1 sur
+        tous les runners GitHub : le job Windows n'a pas de Postgres, et
+        la garde le faisait echouer a tort (constate au premier run)."""
+        if not os.environ.get("HUB_DEALS_EXIGE_PG"):
+            self.skipTest("Postgres non exige ici")
         self.assertTrue(
             os.environ.get("HUB_DEALS_TEST_PG_URL"),
             "HUB_DEALS_TEST_PG_URL manque : les tests Postgres se seraient "
