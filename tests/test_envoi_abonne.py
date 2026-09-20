@@ -95,5 +95,70 @@ class TestEnvoyerTelegramA(unittest.TestCase):
             hub_deals_db.TELEGRAM_CHAT_ID = chat
 
 
+class TestSourceDesAbonnes(unittest.TestCase):
+    """Le releve tourne sur le portable, l'ecoute sur Render : les abonnes
+    ne sont plus dans flight_deals.db."""
+
+    def setUp(self):
+        import abonnes
+        import magasin
+        import tempfile
+        from unittest import mock
+        self.mock, self.magasin, self.abonnes = mock, magasin, abonnes
+        # la vraie fonction, capturee avant tout remplacement : sans cela
+        # _ouvrir s'appellerait lui-meme une fois magasin.ouvrir patche.
+        self.vrai_ouvrir = magasin.ouvrir
+        self.dossier = tempfile.TemporaryDirectory()
+        self.chemin = os.path.join(self.dossier.name, "abonnes.db")
+        self.ouvertes = []
+        self._log = hub_deals_db.log
+        self._envoyer_a = hub_deals_db.envoyer_telegram_a
+        self.lignes = []
+        hub_deals_db.log = self.lignes.append
+        self.groupes = [[{
+            "destination": "Rome", "destination_code": "ROM", "hub": "Abidjan",
+            "ville_depart": "Dakar", "prix_actuel": 975.0,
+            "moyenne_historique": 1419.0, "baisse_pct": 31.3, "economie": 444.0,
+            "rabattement_mesure": None, "lien": "/search/ABJ0511ROM1"}]]
+
+    def tearDown(self):
+        for conn in self.ouvertes:
+            conn.close()
+        self.dossier.cleanup()
+        hub_deals_db.log = self._log
+        hub_deals_db.envoyer_telegram_a = self._envoyer_a
+
+    def _ouvrir(self):
+        conn = self.vrai_ouvrir(chemin=self.chemin)
+        self.ouvertes.append(conn)
+        return conn
+
+    def test_les_abonnes_viennent_du_magasin_pas_de_la_base_des_offres(self):
+        conn = self._ouvrir()
+        quand = self.abonnes.maintenant()
+        self.abonnes.inscrire(conn, 862000001, "Awa", quand)
+        self.abonnes.choisir_ville(conn, 862000001, "Dakar", quand)
+        recus = []
+        hub_deals_db.envoyer_telegram_a = lambda cid, msg, journaliser=False: (
+            recus.append(cid) or True)
+
+        # patcher magasin.ouvrir et NON hub_deals_db.magasin.ouvrir :
+        # l'import est fait DANS la fonction, donc hub_deals_db n'a pas
+        # d'attribut « magasin » a patcher.
+        with self.mock.patch.object(self.magasin, "ouvrir", self._ouvrir):
+            hub_deals_db.notifier_abonnes_sans_risque(self.groupes)
+
+        self.assertEqual(recus, [862000001], "\n".join(self.lignes))
+
+    def test_une_base_injoignable_n_interrompt_pas_le_releve(self):
+        """Contrat inchange : ne leve jamais. Le proprietaire a deja recu
+        son message, le releve doit finir."""
+        def ouvrir_casse():
+            raise RuntimeError("connexion refusee")
+
+        with self.mock.patch.object(self.magasin, "ouvrir", ouvrir_casse):
+            hub_deals_db.notifier_abonnes_sans_risque(self.groupes)   # ne leve pas
+
+
 if __name__ == "__main__":
     unittest.main()

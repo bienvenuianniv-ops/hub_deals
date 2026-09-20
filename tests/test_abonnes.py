@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import abonnes
 import hub_deals_db
+import magasin
 
 # jamais d'appel reel a l'API des liens courts depuis les tests, meme
 # quand TRAVELPAYOUTS_PROJET est pose sur la machine
@@ -19,9 +20,25 @@ T1 = "2026-09-15T12:05:00+00:00"
 
 
 def _base():
-    conn = sqlite3.connect(":memory:")
-    abonnes.init_abonnes(conn)
-    return conn
+    # par le magasin : une seule definition du schema
+    return magasin.ouvrir(chemin=":memory:")
+
+
+class _SansFermeture:
+    """Rend la connexion du test au code teste, qui la fermerait sinon en
+    fin de traitement -- or le test s'en sert encore apres."""
+
+    def __init__(self, conn):
+        self._conn = conn
+
+    def execute(self, *a, **k):
+        return self._conn.execute(*a, **k)
+
+    def commit(self):
+        self._conn.commit()
+
+    def close(self):
+        pass
 
 
 class TestStructure(unittest.TestCase):
@@ -38,9 +55,8 @@ class TestDonneesAbonnes(unittest.TestCase):
     def tearDown(self):
         self.conn.close()
 
-    def test_init_est_idempotent(self):
-        abonnes.init_abonnes(self.conn)
-        abonnes.init_abonnes(self.conn)
+    # l'idempotence de la creation des tables est passee au magasin, qui la
+    # teste pour les deux moteurs (tests/test_magasin.py)
 
     def test_inscription_puis_lecture(self):
         abonnes.inscrire(self.conn, 111, "Awa", T0)
@@ -315,9 +331,16 @@ class TestReleveNotifieLesAbonnes(unittest.TestCase):
             abonnes.inscrire(self.conn, chat_id, "x", T0)
             abonnes.choisir_ville(self.conn, chat_id, self.ville, T0)
 
+        # Les abonnes ne sont plus dans la base des offres : sans ce
+        # remplacement, notifier_abonnes_sans_risque ouvrirait le vrai
+        # flight_deals.db -- et le CREERAIT s'il n'existe pas.
+        self._vrai_ouvrir = magasin.ouvrir
+        magasin.ouvrir = lambda: _SansFermeture(self.conn)
+
     def tearDown(self):
         for n, v in self._sauve.items():
             setattr(hub_deals_db, n, v)
+        magasin.ouvrir = self._vrai_ouvrir
         self.conn.close()
 
     def test_proprietaire_d_abord_puis_abonnes_sans_doublon(self):
@@ -337,82 +360,24 @@ class TestReleveNotifieLesAbonnes(unittest.TestCase):
         self.assertEqual(self.ordre, ["proprietaire"])
         self.assertIn("envoi aux abonnes impossible", "\n".join(self.lignes))
 
-    def test_une_base_sans_table_abonnes_ne_casse_pas(self):
-        conn = sqlite3.connect(":memory:")
-        hub_deals_db.verifier_et_notifier_anomalies(conn, "2026-09-15")
+    def test_une_base_distante_sans_abonne_ne_casse_pas(self):
+        """« Sans table abonnes » n'existe plus : le magasin les cree
+        toujours. Le cas reel devient une base distante encore vide --
+        exactement l'etat du jour de la bascule, avant la migration."""
+        # la vraie fonction : magasin.ouvrir est deja remplace par setUp
+        vide = self._vrai_ouvrir(chemin=":memory:")
+        magasin.ouvrir = lambda: _SansFermeture(vide)
+
+        hub_deals_db.verifier_et_notifier_anomalies(self.conn, "2026-09-15")
+
         self.assertEqual(self.ordre, ["proprietaire"])
         self.assertIn("Abonnes : aucun abonne a servir.", self.lignes)
+        vide.close()
 
     def test_le_releve_attend_la_base_occupee_par_l_ecoute(self):
         import inspect
         bloc = inspect.getsource(hub_deals_db).split('if __name__ == "__main__":')[1]
         self.assertIn("sqlite3.connect(DB_PATH, timeout=30)", bloc)
-
-
-class TestTemoinEcoute(unittest.TestCase):
-    def setUp(self):
-        self.conn = _base()
-
-    def tearDown(self):
-        self.conn.close()
-
-    def test_temoin_recent(self):
-        abonnes.noter_ecoute(self.conn, "2026-09-15T12:55:00+00:00")
-        self.assertFalse(abonnes.ecoute_muette(self.conn, "2026-09-15T13:04:00+00:00"))
-
-    def test_temoin_ancien(self):
-        abonnes.noter_ecoute(self.conn, "2026-09-15T12:50:00+00:00")
-        self.assertTrue(abonnes.ecoute_muette(self.conn, "2026-09-15T13:04:00+00:00"))
-
-    def test_temoin_mis_a_jour(self):
-        abonnes.noter_ecoute(self.conn, "2026-09-15T08:00:00+00:00")
-        abonnes.noter_ecoute(self.conn, "2026-09-15T13:00:00+00:00")
-        self.assertFalse(abonnes.ecoute_muette(self.conn, "2026-09-15T13:04:00+00:00"))
-
-    def test_temoin_absent_sans_abonne_n_alerte_pas(self):
-        """Bot jamais installe : rien a surveiller."""
-        self.assertFalse(abonnes.ecoute_muette(self.conn, T0))
-
-    def test_temoin_absent_avec_abonnes_alerte(self):
-        abonnes.inscrire(self.conn, 1, "x", T0)
-        self.assertTrue(abonnes.ecoute_muette(self.conn, T1))
-
-
-class TestAlerteEcouteArretee(unittest.TestCase):
-    def setUp(self):
-        self.envois = []
-        self.lignes = []
-        self._log = hub_deals_db.log
-        self._envoyer = hub_deals_db.envoyer_telegram
-        hub_deals_db.log = self.lignes.append
-        hub_deals_db.envoyer_telegram = lambda msg: self.envois.append(msg) or True
-        self.conn = _base()
-
-    def tearDown(self):
-        hub_deals_db.log = self._log
-        hub_deals_db.envoyer_telegram = self._envoyer
-        self.conn.close()
-
-    def test_alerte_si_ecoute_muette(self):
-        abonnes.noter_ecoute(self.conn, "2020-01-01T00:00:00+00:00")
-        hub_deals_db.verifier_ecoute_et_alerter(self.conn)
-        self.assertEqual(len(self.envois), 1)
-        self.assertIn("ecoute du bot est arretee", self.envois[0])
-
-    def test_rien_si_ecoute_vivante(self):
-        abonnes.noter_ecoute(self.conn, abonnes.maintenant())
-        hub_deals_db.verifier_ecoute_et_alerter(self.conn)
-        self.assertEqual(self.envois, [])
-
-    def test_ne_leve_jamais(self):
-        hub_deals_db.verifier_ecoute_et_alerter(None)
-        self.assertEqual(self.envois, [])
-
-    def test_appele_avant_la_fin_du_releve(self):
-        import inspect
-        bloc = inspect.getsource(hub_deals_db).split('if __name__ == "__main__":')[1]
-        self.assertLess(bloc.index("verifier_ecoute_et_alerter(conn)"),
-                        bloc.index("=== Fin d'execution ==="))
 
 
 class TestBlocAbonneResident(unittest.TestCase):

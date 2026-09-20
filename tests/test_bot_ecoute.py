@@ -8,6 +8,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import abonnes
+import magasin
 import bot_ecoute
 
 CODE = "invitation_test_2026"
@@ -43,8 +44,7 @@ class TestCodeValide(unittest.TestCase):
 
 class TestCommandes(unittest.TestCase):
     def setUp(self):
-        self.conn = sqlite3.connect(":memory:")
-        abonnes.init_abonnes(self.conn)
+        self.conn = magasin.ouvrir(chemin=":memory:")
         self.ville = sorted(abonnes.NOMS_AFFICHES)[0]
 
     def tearDown(self):
@@ -206,8 +206,7 @@ class _FauxTelegram:
 
 class TestBoucle(unittest.TestCase):
     def setUp(self):
-        self.conn = sqlite3.connect(":memory:")
-        abonnes.init_abonnes(self.conn)
+        self.conn = magasin.ouvrir(chemin=":memory:")
         self.lignes = []
         self.pauses = []
         self._log = bot_ecoute.log
