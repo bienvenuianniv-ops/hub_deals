@@ -76,8 +76,12 @@ travaille toujours sur les mêmes valeurs qu'avant.
 | `detect_anomalies.py` | Outil CLI d'analyse/diagnostic — relit la base et affiche les comparaisons, sans notifier. |
 | `recherche.py` | Recherche de billet à la demande : interroger soi-même une route, et mettre une destination sous surveillance du relevé quotidien. |
 | `reprise_residents.py` | Migration ponctuelle : reporte l'historique des vols directs des villes résidentes. Rejouable sans risque. |
-| `abonnes.py` | Abonnés du bot (test privé) : inscriptions, filtrage des affaires par ville, message d'abonné, envoi, témoin d'écoute. Sans réseau. |
-| `bot_ecoute.py` | Programme d'écoute permanent du bot : commandes `/start`, `/ville`, `/stop`. Seul lecteur de `getUpdates`. |
+| `abonnes.py` | Abonnés du bot : inscriptions, filtrage des affaires par ville, message d'abonné, envoi. Sans réseau et sans SQL de schéma. |
+| `magasin.py` | Ouvre la base des abonnés, en SQLite ou en Postgres, et crée les tables. Seul endroit où le schéma est défini. |
+| `bot_ecoute.py` | Logique d'inscription : `/start`, `/ville`, `/stop`. Appelée par le service webhook. |
+| `web_bot.py` | Service webhook (Render) : reçoit les messages Telegram et répond. |
+| `migrer_abonnes.py` | Migration ponctuelle : reprend les abonnés du SQLite local vers la base distante. Rejouable. |
+| `render.yaml` | Déclaration du service Render. |
 | `taches/` | Définition XML et script d'installation de la tâche planifiée « Bot vols - ecoute ». |
 | `test_travelpayouts.py` | Script de test brut de l'API Travelpayouts. |
 | `hub_deals_AUDIT.md` | Journal d'audit détaillé du projet (historique des décisions et correctifs). |
@@ -86,7 +90,9 @@ travaille toujours sur les mêmes valeurs qu'avant.
 ## Installation
 
 ```
-pip install -r requirements.txt
+pip install -r requirements.txt        # relevé
+pip install -r requirements-web.txt    # + service webhook
+pip install -r requirements-dev.txt    # + lanceur de tests
 ```
 
 ## Configuration
@@ -94,10 +100,14 @@ pip install -r requirements.txt
 Variables d'environnement requises (aucun secret en dur dans le code) :
 
 ```
-TRAVELPAYOUTS_TOKEN=...   # requis
-TELEGRAM_BOT_TOKEN=...    # optionnel — sans lui, pas de notification
-TELEGRAM_CHAT_ID=...      # optionnel — idem
+TRAVELPAYOUTS_TOKEN=...      # requis
+TELEGRAM_BOT_TOKEN=...       # optionnel — sans lui, pas de notification
+TELEGRAM_CHAT_ID=...         # optionnel — idem
+HUB_DEALS_ABONNES_URL=...    # base des abonnés ; absente : SQLite local
 ```
+
+Le service webhook en demande deux de plus (`TELEGRAM_WEBHOOK_SECRET`,
+`HUB_DEALS_CODE_INVITATION`) — voir « Bot multi-abonnés ».
 
 ## Usage
 
@@ -148,13 +158,32 @@ recevoir le message complet, envoyé en premier.
 Commandes : `/start` (avec le code la première fois), `/ville`, `/stop`. Plafond :
 `abonnes.PLAFOND_ABONNES` abonnés actifs.
 
-`bot_ecoute.py` tourne en permanence (tâche « Bot vols - ecoute », ouverture de session,
-`pythonw`) et journalise dans `bot_ecoute_log.txt`. C'est le **seul** lecteur de `getUpdates`.
-S'il ne tourne plus, le relevé suivant envoie une alerte au propriétaire.
+### L'écoute vit hors du portable (depuis le 2026-09-20)
 
-Installation de la tâche (UAC à valider) :
-`Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','C:\Users\Dell\hub_deals\taches\installer_bot_ecoute.ps1'`
-puis lire `%TEMP%\installer_bot_ecoute.txt`.
+Le long polling ne répondait que lorsque le portable était allumé : il redémarrait à chaque
+ouverture de session et s'arrêtait avec la machine. Invisible pour le compte test du
+propriétaire, fatal pour un inconnu qui s'inscrit à 23 h et ne reçoit le clavier des villes
+que le lendemain.
+
+`web_bot.py` reçoit désormais les messages par **webhook**, sur un web service Render
+gratuit, et les abonnés vivent dans **Neon** (Postgres), lu aussi par le relevé.
+`traiter_update()` n'a pas changé : le service l'appelle telle quelle.
+
+| Variable | Où | Rôle |
+|---|---|---|
+| `HUB_DEALS_ABONNES_URL` | portable **et** Render | base des abonnés. **Absente : repli sur le SQLite local** |
+| `TELEGRAM_WEBHOOK_SECRET` | Render | jeton que Telegram renvoie en en-tête ; sans lui le service refuse tout |
+
+Deux comportements à connaître : le service gratuit s'endort après 15 min, donc le premier
+message attend son réveil et Telegram réessaie ; et une base injoignable renvoie **500**, pas
+200 — un 200 sur un message non traité perdrait l'inscription en silence.
+
+La vigie surveille le webhook avec `getWebhookInfo` (adresse enregistrée, erreur récente,
+messages en attente). Le témoin d'écoute d'avant a disparu : avec un webhook il n'y a plus de
+boucle, un service endormi est normal, et ce témoin serait devenu une alarme permanente.
+
+Retour arrière : `deleteWebhook`, réactiver la tâche « Bot vols - ecoute », repointer le
+relevé sur SQLite.
 
 ## Sauvegardes
 
