@@ -202,7 +202,7 @@ class TestMain(unittest.TestCase):
         mardi = datetime(2026, 9, 22, 15, 0, tzinfo=timezone.utc)
 
         code = vigie.main(argv=[], releves=self._releves([940] * 11, mardi),
-                          envoyer=self._envoyer, maintenant=mardi)
+                          volumes=[], envoyer=self._envoyer, maintenant=mardi)
 
         self.assertEqual(code, 0)
         self.assertEqual(self.envoyes, [])
@@ -212,7 +212,7 @@ class TestMain(unittest.TestCase):
         vieux = self._releves([940] * 11,
                               datetime(2026, 9, 22, 13, 0, tzinfo=timezone.utc))
 
-        code = vigie.main(argv=[], releves=vieux, envoyer=self._envoyer,
+        code = vigie.main(argv=[], releves=vieux, volumes=[], envoyer=self._envoyer,
                           maintenant=jeudi)
 
         self.assertEqual(code, 0)
@@ -225,7 +225,7 @@ class TestMain(unittest.TestCase):
         vieux = self._releves([940] * 11,
                               datetime(2026, 9, 22, 13, 0, tzinfo=timezone.utc))
 
-        code = vigie.main(argv=["--sans-envoi"], releves=vieux,
+        code = vigie.main(argv=["--sans-envoi"], releves=vieux, volumes=[],
                           envoyer=self._envoyer, maintenant=jeudi)
 
         self.assertEqual(code, 0)
@@ -235,10 +235,34 @@ class TestMain(unittest.TestCase):
         lundi = datetime(2026, 9, 21, 15, 0, tzinfo=timezone.utc)
 
         vigie.main(argv=[], releves=self._releves([940] * 11, lundi),
-                   envoyer=self._envoyer, maintenant=lundi)
+                   volumes=[], envoyer=self._envoyer, maintenant=lundi)
 
         self.assertEqual(len(self.envoyes), 1)
         self.assertIn("semaine", self.envoyes[0])
+
+    def test_une_ville_effondree_part_sur_telegram(self):
+        """Le relevé est frais et complet : seul le critère par ville parle."""
+        mardi = datetime(2026, 9, 22, 15, 0, tzinfo=timezone.utc)
+        volumes = [{"Dakar": 200}] + [{"Dakar": 200, "Istanbul": 30}] * 10
+
+        code = vigie.main(argv=[], releves=self._releves([940] * 11, mardi),
+                          volumes=volumes, envoyer=self._envoyer,
+                          maintenant=mardi)
+
+        self.assertEqual(code, 0)
+        self.assertEqual(len(self.envoyes), 1)
+        self.assertIn("Istanbul", self.envoyes[0])
+
+    def test_le_bilan_du_lundi_se_tait_si_une_ville_est_effondree(self):
+        """Un « rien à signaler » à côté d'une alerte la contredirait."""
+        lundi = datetime(2026, 9, 21, 15, 0, tzinfo=timezone.utc)
+        volumes = [{"Dakar": 200}] + [{"Dakar": 200, "Istanbul": 30}] * 10
+
+        vigie.main(argv=[], releves=self._releves([940] * 11, lundi),
+                   volumes=volumes, envoyer=self._envoyer, maintenant=lundi)
+
+        self.assertEqual(len(self.envoyes), 1)
+        self.assertNotIn("Rien à signaler", self.envoyes[0])
 
     def test_un_echec_d_envoi_fait_echouer_la_tache(self):
         """Sinon la panne serait doublement silencieuse. Un code non nul
@@ -247,10 +271,159 @@ class TestMain(unittest.TestCase):
         vieux = self._releves([940] * 11,
                               datetime(2026, 9, 22, 13, 0, tzinfo=timezone.utc))
 
-        code = vigie.main(argv=[], releves=vieux, envoyer=lambda m: False,
+        code = vigie.main(argv=[], releves=vieux, volumes=[], envoyer=lambda m: False,
                           maintenant=jeudi)
 
         self.assertEqual(code, 1)
+
+
+
+# Vrai debut d'un dump `sqlite3 .iterdump` : ville_depart est en DERNIERE
+# colonne (ajoutee par ALTER TABLE), pas a sa place dans le CREATE TABLE.
+# Un comptage a la position fixe se tromperait de colonne.
+DUMP_REEL = """BEGIN TRANSACTION;
+CREATE TABLE offres (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date_collecte TEXT NOT NULL,
+            hub_origine TEXT NOT NULL,
+            destination_code TEXT,
+            destination_nom TEXT,
+            prix_vol_hub REAL,
+            rabattement REAL,
+            total_estime REAL,
+            date_depart TEXT,
+            lien TEXT
+        , ville_depart TEXT NOT NULL DEFAULT 'Dakar');
+INSERT INTO offres VALUES(1,'2026-09-18 13:00:03','Abidjan','ROM','Rome',60.0,468.0,528.0,'2026-09-23','/s/1','Dakar');
+INSERT INTO offres VALUES(2,'2026-09-18 13:00:03','Abidjan','PAR','Paris',70.0,468.0,538.0,'2026-09-23','/s/2','Dakar');
+INSERT INTO offres VALUES(3,'2026-09-18 13:00:03','Istanbul','ROM','Rome',80.0,0.0,80.0,'2026-09-23','/s/3','Istanbul');
+INSERT INTO offres VALUES(4,'2026-09-19 13:00:02','Abidjan','ROM','Rome',61.0,468.0,529.0,'2026-09-24','/s/4','Dakar');
+INSERT INTO offres VALUES(5,'2026-09-19 13:00:02','Istanbul','ROM','Rome',81.0,0.0,81.0,'2026-09-24','/s/5','Istanbul');
+COMMIT;"""
+
+
+class TestVolumesParVille(unittest.TestCase):
+    """Le volume global ne voit pas la panne d'une seule ville : la spec des
+    abonnes residents note l'angle mort (~900 lignes contre 1 280 de mediane
+    = 70 %, au-dessus du seuil global de 50 %)."""
+
+    def test_compte_les_lignes_par_ville_du_plus_recent_au_plus_ancien(self):
+        volumes = vigie.lire_volumes_par_ville(lire_dump=lambda: DUMP_REEL)
+
+        self.assertEqual(volumes,
+                         [{"Dakar": 1, "Istanbul": 1},
+                          {"Dakar": 2, "Istanbul": 1}])
+
+    def test_ne_lit_que_les_derniers_releves(self):
+        volumes = vigie.lire_volumes_par_ville(lire_dump=lambda: DUMP_REEL,
+                                               nb_releves=1)
+
+        self.assertEqual(volumes, [{"Dakar": 1, "Istanbul": 1}])
+
+    def test_un_dump_illisible_ne_fait_pas_planter(self):
+        """La vigie doit parler meme si le dump est tronque : se taire ici,
+        c'est le silence que la vigie existe justement pour eviter."""
+        self.assertEqual(vigie.lire_volumes_par_ville(lire_dump=lambda: "ceci"),
+                         [])
+
+    def test_lit_le_dump_de_la_branche_des_sauvegardes(self):
+        commandes = []
+
+        def faux_git(commande):
+            commandes.append(commande)
+            return DUMP_REEL
+
+        vigie.lire_volumes_par_ville(executer=faux_git)
+
+        self.assertEqual(commandes, [vigie.COMMANDE_DUMP])
+
+
+class TestJugerParVille(unittest.TestCase):
+    """Seuil par ville : la moitie de la mediane de CETTE ville, et non du
+    total. Une ville sous MIN_LIGNES_VILLE n'est pas jugee -- a ce volume,
+    une variation du cache de l'API suffirait a faire du bruit."""
+
+    def _volumes(self, dernier, habituel, n=10):
+        return [dernier] + [habituel] * n
+
+    def test_des_villes_normales_ne_disent_rien(self):
+        volumes = self._volumes({"Dakar": 212, "Istanbul": 30},
+                                {"Dakar": 200, "Istanbul": 30})
+
+        self.assertEqual(vigie.juger_par_ville(volumes), [])
+
+    def test_une_ville_disparue_est_nommee(self):
+        volumes = self._volumes({"Dakar": 212}, {"Dakar": 200, "Istanbul": 30})
+
+        problemes = vigie.juger_par_ville(volumes)
+
+        self.assertEqual(len(problemes), 1)
+        self.assertIn("Istanbul", problemes[0])
+        self.assertIn("0 ligne", problemes[0])
+
+    def test_voit_la_panne_des_seules_lignes_residentes(self):
+        """Le cas que le critere global rate. Les 8 villes qui ne partent que
+        de leur propre hub tombent a 0 ; le total passe de 1 168 a 972, soit
+        76 % de l'habitude -- au-dessus du seuil global de 50 %."""
+        residentes = {v: 25 for v in ("Casablanca", "Paris", "Istanbul",
+                                      "Addis-Abeba", "Nairobi", "Lagos",
+                                      "Johannesburg", "Le Caire")}
+        rabattues = {"Dakar": 212, "Kinshasa": 215, "Abidjan": 183,
+                     "Brazzaville": 193, "Lome": 169}
+        habituel = dict(residentes, **rabattues)
+
+        muet = vigie.juger(
+            [{"date": datetime(2026, 9, 20, 13, tzinfo=timezone.utc),
+              "lignes": sum(rabattues.values())}]
+            + [{"date": datetime(2026, 9, 19, 13, tzinfo=timezone.utc),
+                "lignes": sum(habituel.values())}] * 10,
+            datetime(2026, 9, 20, 15, tzinfo=timezone.utc))
+        problemes = vigie.juger_par_ville(self._volumes(rabattues, habituel))
+
+        self.assertEqual(muet, [], "le critere global est cense rester muet")
+        self.assertEqual(len(problemes), 1)
+        for ville in residentes:
+            self.assertIn(ville, problemes[0])
+
+    def test_plusieurs_villes_tiennent_dans_un_seul_message(self):
+        """Une alerte par ville noierait le telephone : 13 messages pour une
+        seule panne."""
+        volumes = self._volumes({"Dakar": 10, "Istanbul": 2, "Lome": 169},
+                                {"Dakar": 200, "Istanbul": 30, "Lome": 169})
+
+        problemes = vigie.juger_par_ville(volumes)
+
+        self.assertEqual(len(problemes), 1)
+        self.assertNotIn("Lome", problemes[0])
+
+    def test_une_ville_trop_petite_n_est_pas_jugee(self):
+        volumes = self._volumes({"Essai": 1}, {"Essai": 8})
+
+        self.assertEqual(vigie.juger_par_ville(volumes), [])
+
+    def test_une_ville_nouvelle_n_alerte_pas(self):
+        """Les 4 villes promues hubs le 2026-09-19 etaient absentes de tout
+        l'historique : leur mediane vaut 0, rien a signaler."""
+        volumes = self._volumes({"Dakar": 200, "Lome": 169}, {"Dakar": 200})
+
+        self.assertEqual(vigie.juger_par_ville(volumes), [])
+
+    def test_une_ville_intermittente_n_alerte_pas(self):
+        """Presente dans 2 releves sur 10 : sa mediane est 0, une absence de
+        plus ne prouve rien."""
+        volumes = [{"Dakar": 200}] + [{"Dakar": 200, "Essai": 40}] * 2 \
+            + [{"Dakar": 200}] * 8
+
+        self.assertEqual(vigie.juger_par_ville(volumes), [])
+
+    def test_sans_historique_suffisant_rien_n_est_juge(self):
+        volumes = self._volumes({"Istanbul": 0}, {"Istanbul": 30}, n=3)
+
+        self.assertEqual(vigie.juger_par_ville(volumes), [])
+
+    def test_sans_volumes_rien_n_est_juge(self):
+        """Dump illisible : c'est le critere global qui parle, pas celui-ci."""
+        self.assertEqual(vigie.juger_par_ville([]), [])
 
 
 if __name__ == "__main__":
