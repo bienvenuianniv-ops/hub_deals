@@ -182,8 +182,13 @@ La vigie surveille le webhook avec `getWebhookInfo` (adresse enregistrée, erreu
 messages en attente). Le témoin d'écoute d'avant a disparu : avec un webhook il n'y a plus de
 boucle, un service endormi est normal, et ce témoin serait devenu une alarme permanente.
 
-Retour arrière : `deleteWebhook`, réactiver la tâche « Bot vols - ecoute », repointer le
-relevé sur SQLite.
+**Bascule faite le 2026-09-20.** Le long polling a été retiré du dépôt, et la tâche
+« Bot vols - ecoute » est désactivée. Ne la réactive pas telle quelle : elle lancerait
+`bot_ecoute.py`, qui n'a plus de point d'entrée et ne ferait rien, sans le dire.
+
+Retour arrière, si le webhook devait être abandonné : `deleteWebhook`, puis
+`git revert` du commit qui a retiré le long polling — c'est lui qui remet la boucle, le
+verrou anti-veille et les fichiers de tâche.
 
 ## Sauvegardes
 

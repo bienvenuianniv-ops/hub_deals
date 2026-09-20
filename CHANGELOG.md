@@ -4,6 +4,41 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Pro
 
 ## 2026-09-20 (suite) — l'écoute quitte le portable
 
+> **Bascule faite et prouvée le 2026-09-20.** Le bot répond désormais à toute heure,
+> portable éteint ou non, et les abonnés vivent dans Neon.
+
+### Mise en production
+- **Base Neon** : rôle `hub_deals_bot` limité à `SELECT/INSERT/UPDATE`. Trois témoins vérifiés
+  sur la vraie base — `DELETE`, `DROP` et `CREATE` tous refusés.
+- **Migration** : 1 abonné repris, **0 au rejeu**, ville et date d'inscription du 15/09 conservées.
+- **Service Render** (`hub-deals-bot`, Frankfurt, plan gratuit) : `/sante` répond en 0,56 s,
+  un POST sans secret ou avec un faux secret repart en **403**, avec le bon secret en **200**.
+- **Webhook enregistré** : `getWebhookInfo` donne l'adresse attendue, 0 message en attente,
+  aucune erreur. Le long polling a été arrêté avant, Telegram refusant les deux ensemble.
+- **Preuves de bout en bout** : le propriétaire, non abonné, reçoit « ce bot est sur
+  invitation » ; le compte test, abonné, reçoit l'aide puis le clavier des treize villes sur un
+  vrai `/ville`. Deux réponses différentes selon le compte : seule une lecture réussie de Neon
+  peut produire cela.
+- **Relevé de 13h** : a tourné avec le nouveau code (248 routes, 5 affaires, liens courts 10/10)
+  et a lu les abonnés dans Neon — « 1 sans affaire », aucune des 5 ne partait de Dakar. Prouvé
+  qu'une tâche planifiée hérite bien de la variable posée par `setx` (tâche jetable de contrôle).
+
+### Corrigé pendant la bascule
+- **`ouvrir()` créait les tables à chaque connexion**, ce qu'un rôle sans droit de création
+  refuse — **même quand la table existe déjà**. Révélé par le rôle restreint sur la vraie base :
+  sans ce correctif, le service aurait échoué à sa première requête. Les tables sont créées une
+  fois par un rôle qui en a le droit ; un test le prouve contre un rôle Postgres aussi limité.
+- **Région Render** : `render.yaml` n'en précisait aucune, le service serait parti en Oregon,
+  à 7 000 km de la base. Figé à Frankfurt.
+
+### Retiré
+- **Le long polling** (`boucle`, `empecher_la_veille`, le bloc `__main__` et leurs tests), ainsi
+  que les fichiers de la tâche « Bot vols - ecoute ». Ces fichiers étaient devenus dangereux :
+  ils lanceraient un `bot_ecoute.py` sans point d'entrée, qui ne ferait rien **en silence**.
+  `bot_ecoute.py` passe à 175 lignes et ne porte plus que la logique d'inscription, appelée par
+  le service. Retour arrière désormais par `git revert`, pas en réactivant la tâche.
+
+
 > Code livré et testé ; **la bascule elle-même (Neon, Render, `setWebhook`) reste à faire**.
 > Tant qu'elle n'est pas passée, les abonnés vivent encore dans le SQLite local — et n'y sont
 > sauvegardés nulle part. **Ne recruter personne avant.**
