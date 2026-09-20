@@ -66,7 +66,7 @@ jobs:
           HUB_DEALS_TEST_PG_URL: postgresql://postgres:essai@localhost:5432/hub_deals_test
         run: |
           set -o pipefail
-          python -m pytest tests/test_magasin.py -q -rs | tee sortie.txt
+          python -m pytest tests/test_magasin.py tests/test_migrer_abonnes.py -q -rs | tee sortie.txt
           if grep -q "skipped" sortie.txt; then
             echo "::error::des tests de persistance ont ete sautes"
             exit 1
