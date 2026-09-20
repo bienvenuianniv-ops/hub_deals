@@ -4,6 +4,8 @@ services:
     name: hub-deals-bot
     runtime: python
     plan: free          # s'endort apres 15 min ; Telegram reessaie au reveil
+    region: frankfurt   # meme region que la base Neon : chaque lecture des
+                        # abonnes est un aller-retour, autant qu'il soit court
     buildCommand: pip install -r requirements-web.txt
     startCommand: gunicorn web_bot:app --bind 0.0.0.0:$PORT --workers 1 --timeout 30
     healthCheckPath: /sante
