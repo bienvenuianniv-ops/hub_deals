@@ -2,6 +2,55 @@
 
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Projet personnel sans versionnage sémantique — entrées datées.
 
+## 2026-09-20 (suite) — l'écoute quitte le portable
+
+> Code livré et testé ; **la bascule elle-même (Neon, Render, `setWebhook`) reste à faire**.
+> Tant qu'elle n'est pas passée, les abonnés vivent encore dans le SQLite local — et n'y sont
+> sauvegardés nulle part. **Ne recruter personne avant.**
+
+### Ajouté
+- **`magasin.py` : la base des abonnés, en SQLite ou en Postgres.** `abonnes.py` n'a pas été
+  modifié — ses requêtes gardent leurs placeholders `?`, traduits en `%s` pour psycopg par une
+  couche qui laisse intacts les `?` entre quotes et double les pourcents littéraux. `chat_id`
+  est un **`BIGINT`** côté Postgres : `INTEGER` plafonne à 2 147 483 647, or Telegram attribue
+  des identifiants au-delà — la panne ne serait pas arrivée au test, mais au premier inconnu
+  inscrit. Le schéma n'est plus défini qu'à un seul endroit (`init_abonnes` a disparu).
+- **`web_bot.py` : le service webhook.** Il appelle `traiter_update()` telle quelle, déjà pure
+  et idempotente — ce qui absorbe le doublon que Telegram peut livrer pendant le réveil du
+  service. Une requête sans le secret repart en 403 sans toucher à la base, et un service
+  déployé **sans** secret n'accepte personne : l'absence ferme la porte. Une base injoignable
+  rend **500** et non 200, pour que Telegram réessaie au lieu de perdre l'inscription.
+- **`migrer_abonnes.py`**, idempotent et rejoué par un test : la seconde exécution reprend 0
+  ligne. La cible fait foi — une inscription arrivée par le webhook pendant la bascule n'est
+  pas écrasée par la vieille copie locale.
+- **Un second job CI, sur Linux, contre un vrai Postgres.** Les mêmes opérations tournent deux
+  fois, une par moteur ; le runner Windows garde la suite complète (`tasklist`, `pythonw`). Un
+  test gardien échoue si la base manque là où elle est exigée, et le job échoue si pytest saute
+  ne serait-ce qu'un test — un saut le viderait de son sens sans le faire rougir.
+
+### Modifié
+- **Le relevé lit les abonnés dans la base distante.** `notifier_abonnes_sans_risque` perd son
+  paramètre `conn` : la connexion aux abonnés n'est plus celle des offres. Contrat inchangé —
+  ne lève jamais, et une base injoignable laisse le relevé se terminer.
+- **La vigie surveille le webhook** (`getWebhookInfo` : adresse enregistrée, erreur de moins de
+  24 h, messages en attente). `ecoute_muette` et `verifier_ecoute_et_alerter` disparaissent :
+  elles comparaient l'heure à un témoin rafraîchi toutes les 50 s par le long polling. Avec un
+  webhook il n'y a plus de boucle, le service dort, et l'absence de message ne signale aucune
+  panne — ce témoin serait devenu une alarme permanente, donc ignorée. La sonde va dans la
+  vigie et non dans le relevé : un portable éteint ne peut pas signaler qu'un service distant
+  est tombé.
+
+### Corrigé pendant l'exécution
+- **Le garde-fou CI visait trop large.** Première version : il exigeait un Postgres dès que `CI`
+  était défini — or `CI` vaut 1 sur **tous** les runners GitHub, y compris le job Windows qui
+  n'a pas de base. Il se déclenche désormais sur une variable posée par le seul job concerné.
+- **Trois fichiers de tests créaient un `flight_deals.db` sur le disque**, depuis que le relevé
+  ouvre lui-même la base des abonnés. Un `conftest.py` ouvre désormais `:memory:` par défaut
+  pour toute la suite. Le repli SQLite reste voulu en production — c'est y toucher depuis un
+  test qui ne l'est pas.
+- **Les tests de la vigie appelaient le vrai `getWebhookInfo`**, avec le jeton de la machine :
+  la classe était passée de 0,2 s à 10 s. La sonde est neutralisée par défaut.
+
 ## 2026-09-20
 
 ### Ajouté

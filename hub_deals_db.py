@@ -1049,16 +1049,22 @@ def construire_bloc(groupe: list) -> str:
     return "\n".join(lignes)
 
 
-def notifier_abonnes_sans_risque(conn, groupes: list) -> None:
+def notifier_abonnes_sans_risque(groupes: list) -> None:
     """Envoie aux abonnes du bot les affaires de leur ville.
 
+    Les abonnes vivent hors de flight_deals.db depuis le 2026-09-20 : le
+    releve tourne sur le portable, l'ecoute sur Render, et les deux voient
+    la meme base distante (magasin.ouvrir).
+
     Appelee APRES le message du proprietaire. Ne leve jamais : import DANS
-    le try, comme pour la sauvegarde -- un abonnes.py absent ou casse ne
-    doit pas faire echouer la fin du releve.
+    le try, comme pour la sauvegarde -- ni un module casse ni une base
+    injoignable ne doivent faire echouer la fin du releve.
     """
+    conn = None
     try:
         import abonnes
-        abonnes.init_abonnes(conn)
+        import magasin
+        conn = magasin.ouvrir()
         abonnes.notifier_abonnes(
             conn, groupes,
             envoyer=lambda chat_id, message: envoyer_telegram_a(
@@ -1068,25 +1074,9 @@ def notifier_abonnes_sans_risque(conn, groupes: list) -> None:
         )
     except Exception as e:
         log(f"   -> envoi aux abonnes impossible : {e}")
-
-
-def verifier_ecoute_et_alerter(conn) -> None:
-    """Previent le proprietaire si bot_ecoute.py ne tourne plus : sinon un
-    invite tape /start dans le vide pendant des jours sans que personne le
-    sache. Ne leve jamais."""
-    try:
-        import abonnes
-        abonnes.init_abonnes(conn)
-        if abonnes.ecoute_muette(conn, abonnes.maintenant()):
-            envoyer_telegram(
-                "<b>Probleme technique -- l'ecoute du bot est arretee</b>\n\n"
-                "Les invites qui tapent /start n'ont pas de reponse.\n\n"
-                "A verifier : tache planifiee « Bot vols - ecoute » et "
-                "bot_ecoute_log.txt"
-            )
-            log("   -> ALERTE ecoute du bot arretee envoyee")
-    except Exception as e:
-        log(f"   -> controle de l'ecoute du bot impossible : {e}")
+    finally:
+        if conn is not None:
+            conn.close()
 
 
 def verifier_et_notifier_anomalies(conn: sqlite3.Connection, date_collecte: str) -> None:
@@ -1140,7 +1130,7 @@ def verifier_et_notifier_anomalies(conn: sqlite3.Connection, date_collecte: str)
         log(f"ECHEC partiel : {partis}/{len(morceaux)} message(s) partis "
             f"pour {len(anomalies)} anomalie(s).")
 
-    notifier_abonnes_sans_risque(conn, groupes)
+    notifier_abonnes_sans_risque(groupes)
 
 
 if __name__ == "__main__":
@@ -1220,10 +1210,6 @@ if __name__ == "__main__":
     # git ou de reseau ne doit pas le faire echouer -- mais elle doit
     # se voir, d'ou la notification en cas d'echec.
     sauvegarder_et_alerter(conn)
-
-    # en fin de releve : l'ecoute lancee a la meme ouverture de session a eu
-    # le temps de rafraichir son temoin
-    verifier_ecoute_et_alerter(conn)
 
     log("=== Fin d'execution ===")
 

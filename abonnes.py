@@ -43,28 +43,6 @@ def maintenant() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def init_abonnes(conn) -> None:
-    """Cree les tables si besoin. Idempotent."""
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS abonnes (
-            chat_id       INTEGER PRIMARY KEY,
-            prenom        TEXT,
-            ville_depart  TEXT,
-            actif         INTEGER NOT NULL DEFAULT 1,
-            inscrit_le    TEXT NOT NULL,
-            modifie_le    TEXT NOT NULL,
-            motif_inactif TEXT
-        )
-    """)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS etat_bot (
-            cle    TEXT PRIMARY KEY,
-            valeur TEXT NOT NULL
-        )
-    """)
-    conn.commit()
-
-
 def _en_dict(ligne) -> dict:
     a = dict(zip(_COLONNES, ligne))
     a["actif"] = bool(a["actif"])
@@ -124,29 +102,17 @@ def abonnes_a_servir(conn, exclure_chat_id=None) -> list:
     return servis
 
 
-# Le long polling rafraichit le temoin au moins toutes les ~50 s. Mesure en
-# FIN de releve (~5 min apres son demarrage), 10 min laissent a l'ecoute
-# lancee a la meme ouverture de session, ou reveillee de veille, le temps de
-# faire son premier appel -- un seuil de 2 h aurait ete fausse par la veille.
-SEUIL_ECOUTE_MUETTE_S = 600
-
-
+# Le temoin d'ecoute n'est plus un garde-fou depuis le 2026-09-20 :
+# avec un webhook il n'y a plus de boucle a surveiller, le service dort
+# et l'absence de message ne signale aucune panne. La sonde
+# getWebhookInfo de la vigie l'a remplace. Il reste ecrit : il aide au
+# diagnostic, il n'alerte plus personne.
 def noter_ecoute(conn, quand: str) -> None:
     conn.execute("""
         INSERT INTO etat_bot (cle, valeur) VALUES ('derniere_ecoute', ?)
         ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur
     """, (quand,))
     conn.commit()
-
-
-def ecoute_muette(conn, quand: str) -> bool:
-    ligne = conn.execute(
-        "SELECT valeur FROM etat_bot WHERE cle = 'derniere_ecoute'").fetchone()
-    if ligne is None:
-        # jamais d'ecoute : anormal seulement si des invites existent
-        return conn.execute("SELECT COUNT(*) FROM abonnes").fetchone()[0] > 0
-    ecart = datetime.fromisoformat(quand) - datetime.fromisoformat(ligne[0])
-    return ecart.total_seconds() > SEUIL_ECOUTE_MUETTE_S
 
 
 # Les prix viennent d'un cache Aviasales (jusqu'a 7 jours) : les regles

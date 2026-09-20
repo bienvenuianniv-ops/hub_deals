@@ -159,7 +159,7 @@ class TestPreparationAuMomentDeLAlerte(_Base):
         hub_deals_db.envoyer_telegram = lambda msg: self.messages.append(msg) or True
         hub_deals_db.mesurer_rabattements = lambda couples: {}
         self.vus_par_abonnes = []
-        hub_deals_db.notifier_abonnes_sans_risque = lambda conn, groupes: \
+        hub_deals_db.notifier_abonnes_sans_risque = lambda groupes: \
             self.vus_par_abonnes.append(hub_deals_db.url_aviasales("/search/ABJ1", "lome"))
         base = {"destination": "Rome", "hub": "Abidjan", "prix_actuel": 900.0,
                 "moyenne_historique": 1000.0, "baisse_pct": 10.0, "economie": 100.0,

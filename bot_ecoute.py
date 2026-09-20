@@ -297,7 +297,6 @@ if __name__ == "__main__":
 
     # timeout > duree d'une transaction du releve (~25 s par hub)
     conn = sqlite3.connect(hub_deals_db.DB_PATH, timeout=60)
-    abonnes.init_abonnes(conn)
     log("=== Demarrage de l'ecoute ===")
     empecher_la_veille()
     boucle(conn, token, CODE_INVITATION)

@@ -1,0 +1,33 @@
+"""Garde-fou commun a toute la suite.
+
+Depuis le 2026-09-20, notifier_abonnes_sans_risque ouvre lui-meme la base
+des abonnes. Sans ce remplacement, tout test qui passe par un releve
+complet CREE un flight_deals.db dans le repertoire courant -- constate sur
+test_hub_deals_db, test_liens_affilies et test_telegram_decoupage.
+
+Le repli SQLite de magasin.ouvrir() reste voulu en production : tant que
+la base distante n'est pas en service, les abonnes vivent encore dans le
+fichier local. Ce qui n'est pas voulu, c'est qu'un test y touche.
+"""
+import os
+import sys
+
+import pytest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import magasin
+
+_VRAI_OUVRIR = magasin.ouvrir
+
+
+@pytest.fixture(autouse=True)
+def base_des_abonnes_en_memoire(monkeypatch):
+    """magasin.ouvrir() sans argument ouvre « :memory: » et non un fichier.
+
+    Un test qui passe un chemin explicite le garde ; un test qui remplace
+    lui-meme magasin.ouvrir garde la main.
+    """
+    monkeypatch.setattr(
+        magasin, "ouvrir",
+        lambda url=None, chemin=":memory:": _VRAI_OUVRIR(url=url, chemin=chemin))
