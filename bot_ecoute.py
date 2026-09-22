@@ -19,6 +19,7 @@ import requests
 
 import abonnes
 import hub_deals_db
+import page
 
 LOG_PATH = "bot_ecoute_log.txt"
 DELAI_LONG_POLLING = 50   # secondes : Telegram garde la requete ouverte
@@ -30,12 +31,27 @@ MSG_BIENVENUE = "Bienvenue ! Choisis ta ville de départ :"
 MSG_MENU = "Choisis ta ville de départ :"
 MSG_STOP = "Tu es désabonné. /start pour revenir."
 MSG_AIDE = "Commandes : /ville pour changer de ville, /stop pour arrêter."
+MSG_ATTENTE = ("C'est noté. Je te préviens dès que {ville} sera couverte. "
+               "En attendant, les affaires du jour sont sur la page publique.")
 
 
 def msg_confirmation(ville: str) -> str:
     nom = abonnes.NOMS_AFFICHES[ville]
     return (f"C'est noté : {nom}. Tu recevras les bonnes affaires au départ de "
             f"{nom}, au plus une fois par jour. /ville pour changer, /stop pour arrêter.")
+
+
+def ville_depuis_etiquette(etiquette: str):
+    """Chemin inverse de etiquette_ville(), CONSTRUIT et non recopie.
+
+    Une table ecrite a la main divergerait des que NOMS_AFFICHES change
+    -- exactement le defaut du 2026-09-16, ou deux endroits fabriquaient
+    l'etiquette chacun de leur cote.
+    """
+    for ville in abonnes.NOMS_AFFICHES:
+        if hub_deals_db.etiquette_ville(ville) == etiquette:
+            return ville
+    return None
 
 
 def code_valide(code):
@@ -151,6 +167,17 @@ def traiter_update(conn, update: dict, code, quand: str):
     prenom = (message.get("from") or {}).get("first_name")
     abonne = abonnes.trouver(conn, chat_id)
     complet = abonnes.nb_actifs(conn) >= abonnes.PLAFOND_ABONNES
+
+    if commande == "/start" and argument.startswith(page.PREFIXE_ATTENTE):
+        # une liste d'attente n'abonne pas : pas de code exige, pas de
+        # plafond consomme, aucune alerte quotidienne promise
+        import souhaits
+        ville = ville_depuis_etiquette(argument[len(page.PREFIXE_ATTENTE):])
+        if ville is None:
+            return [_envoi(chat_id, MSG_INVITATION)], f"attente refusee (ville inconnue) chat_id={chat_id}"
+        souhaits.noter(conn, chat_id, ville, quand)
+        return ([_envoi(chat_id, MSG_ATTENTE.format(ville=abonnes.NOMS_AFFICHES[ville]))],
+                f"attente {ville} chat_id={chat_id}")
 
     if commande == "/start":
         if abonne is not None and abonne["actif"]:
