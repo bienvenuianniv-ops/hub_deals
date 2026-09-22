@@ -80,7 +80,15 @@ Trois unités, séparées par ce qu'elles savent faire :
 `rendre(affaires_par_ville, quand, age_heures) -> str`
 
 Un seul fichier HTML, CSS en ligne, **conçu pour un téléphone d'abord** : le public arrive
-depuis WhatsApp, sur mobile. Aucun fichier annexe, aucune police distante, aucun script.
+depuis WhatsApp, sur mobile. Aucun fichier annexe, aucune police distante.
+
+> **Amendement du 2026-09-22, trouvé en écrivant le plan.** Cette section disait
+> « aucun script », ce qui contredit l'avertissement de fraîcheur ci-dessous : une
+> page statique n'est pas régénérée quand le relevé ne tourne pas, donc elle ne
+> peut pas s'avertir elle-même après coup. **La date du relevé est toujours
+> écrite en clair** (lisible sans JavaScript) et un script en ligne de quelques
+> lignes ajoute un bandeau au-delà de 24 h. Sans JavaScript, on voit la date sans
+> le bandeau — jamais un prix présenté à tort comme frais.
 
 Contenu :
 
