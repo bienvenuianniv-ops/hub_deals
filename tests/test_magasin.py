@@ -117,6 +117,9 @@ class TestOuverturePostgres(unittest.TestCase):
 
     def setUp(self):
         self.url = os.environ["HUB_DEALS_TEST_PG_URL"]
+        # ce setUp EFFACE la table : jamais ailleurs que sur un
+        # conteneur jetable (voir TestBaseJetable)
+        magasin.exiger_base_jetable(self.url)
         self.conn = magasin.ouvrir(url=self.url)
         self.conn.execute("DELETE FROM abonnes")
         self.conn.execute("DELETE FROM etat_bot")
@@ -251,3 +254,39 @@ class TestCheminExpliciteContreEnvironnement(unittest.TestCase):
         l'environnement doit survivre a la correction."""
         with self.assertRaises(Exception):
             _VRAI_OUVRIR()
+
+
+class TestBaseJetable(unittest.TestCase):
+    """TestOuverturePostgres.setUp fait « DELETE FROM abonnes ».
+
+    Le jour ou HUB_DEALS_TEST_PG_URL pointerait la base de production,
+    lancer la suite effacerait les abonnes -- un recrutement fait a la
+    main, la seule chose du projet qui ne se reconstruit pas toute
+    seule. Meme famille que l'incident du 2026-09-22, ou un chemin
+    explicite etait supplante par l'environnement.
+
+    La base de test est TOUJOURS un conteneur jetable sur localhost
+    (voir .github/workflows/tests.yml). La production est chez Neon.
+    """
+
+    def test_accepte_une_base_locale(self):
+        for url in ("postgresql://postgres:essai@localhost:5432/hub_deals_test",
+                    "postgresql://postgres:essai@127.0.0.1:5432/hub_deals_test"):
+            magasin.exiger_base_jetable(url)  # ne doit pas lever
+
+    def test_refuse_une_base_distante(self):
+        neon = ("postgresql://bot:secret@ep-square-lake-b1mtso4n-pooler"
+                ".c-5.eu-central-1.aws.neon.tech/hub_deals")
+
+        with self.assertRaises(RuntimeError) as e:
+            magasin.exiger_base_jetable(neon)
+
+        self.assertIn("localhost", str(e.exception))
+        # le message ne doit pas recracher l'URL : il finit dans un
+        # journal, et l'URL porte le mot de passe
+        self.assertNotIn("secret", str(e.exception))
+
+    def test_refuse_une_url_sans_hote(self):
+        """Un doute se tranche du cote sur : on refuse."""
+        with self.assertRaises(RuntimeError):
+            magasin.exiger_base_jetable("pas une url")

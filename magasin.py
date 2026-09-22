@@ -12,6 +12,7 @@ placeholders « ? », et c'est cette couche qui les traduit pour psycopg.
 import os
 import re
 import sqlite3
+import urllib.parse
 
 URL_ENV = "HUB_DEALS_ABONNES_URL"
 
@@ -91,6 +92,32 @@ class ConnexionPostgres:
 
     def close(self):
         self._connexion.close()
+
+
+# Les tests Postgres tournent contre un conteneur jetable, toujours sur
+# la machine qui les lance (voir .github/workflows/tests.yml). La
+# production, elle, est chez Neon. Cette liste est donc la frontiere
+# exacte entre « je peux effacer cette table » et « surtout pas ».
+_HOTES_JETABLES = ("localhost", "127.0.0.1", "::1", "[::1]")
+
+
+def exiger_base_jetable(url: str) -> None:
+    """Leve si `url` n'est pas une base locale et jetable.
+
+    A appeler avant toute operation destructive d'un test. Le jour ou
+    HUB_DEALS_TEST_PG_URL pointerait la production, un simple « pytest »
+    effacerait les abonnes -- un recrutement fait a la main, que rien ne
+    reconstruit. Le doute se tranche du cote sur : sans hote lisible, on
+    refuse.
+
+    Le message ne contient jamais l'URL : il finit dans un journal, et
+    l'URL porte le mot de passe.
+    """
+    hote = urllib.parse.urlsplit(url).hostname
+    if hote not in _HOTES_JETABLES:
+        raise RuntimeError(
+            "base de test refusee : une operation destructive n'est "
+            "permise que sur localhost. Verifie HUB_DEALS_TEST_PG_URL.")
 
 
 def ouvrir(url=None, chemin=None):

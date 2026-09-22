@@ -24,3 +24,7 @@ destinations_perso.json
 
 # worktree de la branche de sauvegarde (pas du code source)
 .sauvegardes/
+
+# copies locales des abonnes : la seule sauvegarde de donnees
+# personnelles, qui ne doit JAMAIS partir sur le depot public
+abonnes_copies/

@@ -1048,8 +1048,69 @@ def construire_bloc(groupe: list) -> str:
     lignes.append(lien)
     return "\n".join(lignes)
 
+def copier_abonnes_et_alerter(dossier: str = "abonnes_copies") -> bool:
+    """Copie locale des abonnes, et NOTIFIE si elle echoue ou si leur
+    nombre a chute.
+
+    Les abonnes n'existent qu'a un seul endroit, la base distante : le
+    dump public les vide volontairement depuis la fuite du 2026-09-20,
+    donc ils ne sont sauvegardes nulle part. Un recrutement fait a la
+    main est la seule chose du projet qui ne se reconstruit pas toute
+    seule -- et le 2026-09-22 un simple « pytest » a ecrit dans cette
+    table.
+
+    Deux alertes, jamais de « copie OK » : un message quotidien de
+    succes deviendrait un bruit qu'on cesse de lire, et le jour ou il
+    manquerait, personne ne le remarquerait.
+
+    Ne leve jamais : le releve est deja enregistre a ce stade.
+    """
+    conn = None
+    try:
+        # import DANS le try : un module absent ou casse doit declencher
+        # l'alerte, pas faire echouer la fin du releve
+        import abonnes
+        import magasin
+        conn = magasin.ouvrir()
+        rapport = abonnes.ecrire_instantane(conn, dossier, abonnes.maintenant())
+    except Exception as e:
+        log(f"   -> copie des abonnes impossible : {e}")
+        envoye = envoyer_telegram(
+            "<b>Probleme technique -- abonnes non sauvegardes</b>\n\n"
+            "Le releve du jour est bien enregistre, mais la copie locale "
+            "des abonnes a echoue.\n\n"
+            "Ils n'existent qu'au seul endroit de la base distante : "
+            "tant que ce n'est pas repare, une erreur sur cette base "
+            "effacerait le recrutement.\n\n"
+            f"Detail : {e}"
+        )
+        log("   -> ALERTE abonnes envoyee" if envoye
+            else "   -> ALERTE abonnes NON envoyee")
+        return False
+    finally:
+        if conn is not None:
+            conn.close()
+
+    if rapport["chute"]:
+        log(f"   -> CHUTE du nombre d'abonnes : {rapport['precedent']} "
+            f"-> {rapport['lignes']}")
+        envoye = envoyer_telegram(
+            "<b>Le nombre d'abonnes a baisse</b>\n\n"
+            f"Ils etaient {rapport['precedent']}, ils sont "
+            f"{rapport['lignes']}.\n\n"
+            "Des desinscriptions sont normales. Une chute brutale ne "
+            "l'est pas : la copie de la veille est dans "
+            f"{dossier}, elle permet de restaurer."
+        )
+        log("   -> ALERTE chute envoyee" if envoye
+            else "   -> ALERTE chute NON envoyee")
+
+    return True
+
+
 
 def notifier_abonnes_sans_risque(groupes: list) -> None:
+
     """Envoie aux abonnes du bot les affaires de leur ville.
 
     Les abonnes vivent hors de flight_deals.db depuis le 2026-09-20 : le
@@ -1209,6 +1270,11 @@ if __name__ == "__main__":
     # erreur : a ce stade le releve est deja enregistre, une panne de
     # git ou de reseau ne doit pas le faire echouer -- mais elle doit
     # se voir, d'ou la notification en cas d'echec.
+    # avant la sauvegarde hors machine : celle-ci pousse sur un depot
+    # PUBLIC et vide donc les tables privees. Les abonnes ont besoin
+    # de leur propre copie, locale.
+    copier_abonnes_et_alerter()
+
     sauvegarder_et_alerter(conn)
 
     log("=== Fin d'execution ===")

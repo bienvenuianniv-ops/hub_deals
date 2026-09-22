@@ -57,8 +57,11 @@ def generer_dump(conn: sqlite3.Connection,
 
     Mesure sur la vraie base (15,5 Mo, 85 885 lignes) : environ 0,5 s.
 
-    Contrepartie assumee, a lever par l'hebergement des abonnes hors du
-    portable : les abonnes ne sont plus sauvegardes hors machine.
+    Contrepartie : les abonnes ne partent plus avec ce dump. Ils ont
+    depuis le 2026-09-22 leur propre copie locale, quotidienne et datee
+    (hub_deals_db.copier_abonnes_et_alerter). Elle reste sur le
+    portable : ce dump-ci va sur un depot PUBLIC, et une copie chiffree
+    hors machine serait le prochain cran.
     """
     copie = sqlite3.connect(":memory:")
     try:

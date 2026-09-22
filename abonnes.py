@@ -9,6 +9,9 @@ d'ou des transactions courtes, commitees aussitot.
 Spec : docs/superpowers/specs/2026-09-15-bot-abonnes-design.md
 """
 
+import io
+import json
+import os
 import time
 from datetime import datetime, timezone
 
@@ -37,6 +40,90 @@ PLAFOND_ABONNES = 50
 
 _COLONNES = ("chat_id", "prenom", "ville_depart", "actif",
              "inscrit_le", "modifie_le", "motif_inactif")
+
+
+# Nombre de copies quotidiennes conservees. Une seule copie reecrite
+# chaque jour serait effacee par la catastrophe elle-meme : le lendemain
+# d'un DELETE, elle ne contiendrait plus que la table vide.
+COPIES_GARDEES = 30
+
+
+def instantane(conn) -> list:
+    """Toutes les lignes de la table, toutes colonnes comprises.
+
+    Toutes les colonnes et pas seulement celles qui servent a l'envoi :
+    une restauration doit pouvoir recreer la ligne telle quelle.
+    """
+    lignes = conn.execute(
+        f"SELECT {', '.join(_COLONNES)} FROM abonnes ORDER BY chat_id"
+    ).fetchall()
+    return [_en_dict(l) for l in lignes]
+
+
+def _copies_existantes(dossier: str) -> list:
+    if not os.path.isdir(dossier):
+        return []
+    noms = [n for n in os.listdir(dossier)
+            if n.startswith("abonnes-") and n.endswith(".json")]
+    return sorted(noms)  # le nom porte la date : l'ordre alphabetique suffit
+
+
+def _lignes_de(chemin: str):
+    """Nombre d'abonnes d'une copie, ou None si elle est illisible.
+
+    Illisible n'est pas vide : renvoyer 0 ici ferait crier a la chute
+    sur un fichier tronque, et l'alerte cesserait d'etre croyable.
+    """
+    try:
+        with io.open(chemin, encoding="utf-8") as f:
+            return json.load(f)["lignes"]
+    except (OSError, ValueError, KeyError):
+        return None
+
+
+def ecrire_instantane(conn, dossier: str, quand: str) -> dict:
+    """Ecrit la copie du jour et rend un compte rendu.
+
+    Les abonnes n'existent qu'a un seul endroit, la base distante : le
+    dump public les vide volontairement depuis la fuite du 2026-09-20.
+    Cette copie locale est leur seule sauvegarde.
+
+    Ne rattrape aucune erreur : l'appelant decide quoi en faire, et c'est
+    lui qui alerte. Une sauvegarde qui echoue en silence ne protege rien
+    -- lecon des 37 alertes perdues en aout.
+    """
+    os.makedirs(dossier, exist_ok=True)
+    anciennes = _copies_existantes(dossier)
+    precedent = None
+    for nom in reversed(anciennes):
+        if nom[len("abonnes-"):-len(".json")] < quand[:10].replace("-", ""):
+            precedent = _lignes_de(os.path.join(dossier, nom))
+            break
+
+    lignes = instantane(conn)
+    chemin = os.path.join(dossier, f"abonnes-{quand[:10].replace('-', '')}.json")
+    contenu = {"pris_le": quand, "lignes": len(lignes), "abonnes": lignes}
+
+    # ecriture atomique : un processus tue en plein milieu ne doit pas
+    # laisser une copie a moitie ecrite a la place d'une copie valable
+    provisoire = chemin + ".partiel"
+    try:
+        with io.open(provisoire, "w", encoding="utf-8", newline="\n") as f:
+            json.dump(contenu, f, ensure_ascii=False, indent=2)
+        os.replace(provisoire, chemin)
+    finally:
+        if os.path.exists(provisoire):
+            os.remove(provisoire)
+
+    for nom in _copies_existantes(dossier)[:-COPIES_GARDEES]:
+        os.remove(os.path.join(dossier, nom))
+
+    return {
+        "chemin": chemin,
+        "lignes": len(lignes),
+        "precedent": precedent,
+        "chute": precedent is not None and len(lignes) < precedent,
+    }
 
 
 def maintenant() -> str:
