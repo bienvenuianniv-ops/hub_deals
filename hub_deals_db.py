@@ -1024,6 +1024,12 @@ def publier_page(groupes: list, quand: str, dossier: str = ".pages",
         return False
 
 
+def publier_page_sans_risque(groupes: list, quand: str) -> None:
+    """Appelee par le releve. publier_page n'echoue deja jamais ; cette
+    enveloppe existe pour que le raccordement soit testable sans git."""
+    publier_page(groupes, quand)
+
+
 def grouper_anomalies(anomalies: list) -> list:
     """
     Regroupe les anomalies par affaire reelle : le troncon hub -> destination.
@@ -1215,6 +1221,9 @@ def verifier_et_notifier_anomalies(conn: sqlite3.Connection, date_collecte: str)
 
     if not anomalies:
         log("Aucune anomalie a notifier pour ce releve.")
+        # la page doit quand meme etre rafraichie : sinon elle reste sur
+        # les prix de la veille sans le dire
+        publier_page_sans_risque([], date_collecte)
         return
 
     # cout reel du trajet vers le hub, mesure maintenant : la table
@@ -1258,6 +1267,7 @@ def verifier_et_notifier_anomalies(conn: sqlite3.Connection, date_collecte: str)
             f"pour {len(anomalies)} anomalie(s).")
 
     notifier_abonnes_sans_risque(groupes)
+    publier_page_sans_risque(groupes, date_collecte)
 
 
 if __name__ == "__main__":

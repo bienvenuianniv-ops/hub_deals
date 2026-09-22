@@ -10,6 +10,12 @@ import hub_deals_db
 
 QUAND = "2026-09-22T09:18:00+00:00"
 
+# Capturee a l'import, avant que le garde-fou autouse de conftest.py ne
+# neutralise hub_deals_db.publier_page_sans_risque pour le reste de la
+# suite : c'est la vraie fonction (celle qui delegue a publier_page),
+# que TestRaccordementAuReleve remet en place pour son propre test.
+_VRAIE_PUBLIER_PAGE_SANS_RISQUE = hub_deals_db.publier_page_sans_risque
+
 
 class TestPublierPage(unittest.TestCase):
     def setUp(self):
@@ -88,3 +94,25 @@ class TestPublierPage(unittest.TestCase):
                                   executer=self._executer)
 
         self.assertTrue(any("NON envoyee" in l for l in self.journal))
+
+
+class TestRaccordementAuReleve(unittest.TestCase):
+    def test_la_page_est_publiee_meme_sans_anomalie(self):
+        """Un jour sans affaire doit quand meme rafraichir la page :
+        sinon elle resterait bloquee sur les prix de la veille, sans le
+        dire."""
+        appels = []
+        vrai = hub_deals_db.publier_page
+        hub_deals_db.publier_page = lambda *a, **k: appels.append(a) or True
+        # le garde-fou autouse de conftest.py (jamais_de_vraie_publication)
+        # a neutralise publier_page_sans_risque pour toute la suite : ce
+        # test veut justement observer sa delegation, donc il la remet en
+        # place ici (publier_page reste stubbe juste au-dessus, donc rien
+        # de reel -- ni git, ni Telegram -- n'est declenche).
+        hub_deals_db.publier_page_sans_risque = _VRAIE_PUBLIER_PAGE_SANS_RISQUE
+        try:
+            hub_deals_db.publier_page_sans_risque([], QUAND)
+        finally:
+            hub_deals_db.publier_page = vrai
+
+        self.assertEqual(len(appels), 1)
