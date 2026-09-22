@@ -98,21 +98,85 @@ class TestPublierPage(unittest.TestCase):
 
 class TestRaccordementAuReleve(unittest.TestCase):
     def test_la_page_est_publiee_meme_sans_anomalie(self):
-        """Un jour sans affaire doit quand meme rafraichir la page :
-        sinon elle resterait bloquee sur les prix de la veille, sans le
-        dire."""
+        """publier_page_sans_risque delegue bien a publier_page.
+
+        Ceci ne prouve PAS que verifier_et_notifier_anomalies appelle
+        publier_page_sans_risque -- voir les deux tests suivants pour ca.
+        """
         appels = []
-        vrai = hub_deals_db.publier_page
-        hub_deals_db.publier_page = lambda *a, **k: appels.append(a) or True
+        vrai_publier_page = hub_deals_db.publier_page
         # le garde-fou autouse de conftest.py (jamais_de_vraie_publication)
         # a neutralise publier_page_sans_risque pour toute la suite : ce
         # test veut justement observer sa delegation, donc il la remet en
-        # place ici (publier_page reste stubbe juste au-dessus, donc rien
-        # de reel -- ni git, ni Telegram -- n'est declenche).
+        # place ici (publier_page reste stubbe juste en dessous, donc rien
+        # de reel -- ni git, ni Telegram -- n'est declenche). Valeur avant
+        # remplacement sauvee explicitement : la restauration ne repose
+        # pas sur le demontage implicite de monkeypatch.
+        guarde_conftest = hub_deals_db.publier_page_sans_risque
+        hub_deals_db.publier_page = lambda *a, **k: appels.append(a) or True
         hub_deals_db.publier_page_sans_risque = _VRAIE_PUBLIER_PAGE_SANS_RISQUE
         try:
             hub_deals_db.publier_page_sans_risque([], QUAND)
         finally:
-            hub_deals_db.publier_page = vrai
+            hub_deals_db.publier_page = vrai_publier_page
+            hub_deals_db.publier_page_sans_risque = guarde_conftest
 
         self.assertEqual(len(appels), 1)
+
+    def _piloter_le_releve(self, anomalies):
+        """Doublures minimales pour faire tourner verifier_et_notifier_anomalies
+        sans aucun reseau, git ou Telegram reel -- meme demarche que
+        TestPreparationAuMomentDeLAlerte (tests/test_liens_courts.py).
+        Rend (valeurs_a_restaurer, liste_des_appels_a_publier_page_sans_risque).
+        """
+        noms = ("detecter_anomalies", "mesurer_rabattements", "envoyer_telegram",
+                "notifier_abonnes_sans_risque", "raccourcir_liens",
+                "publier_page_sans_risque", "log")
+        sauve = {n: getattr(hub_deals_db, n) for n in noms}
+        hub_deals_db.detecter_anomalies = lambda conn, date_collecte=None: anomalies
+        hub_deals_db.mesurer_rabattements = lambda couples: {}
+        hub_deals_db.envoyer_telegram = lambda msg: True
+        hub_deals_db.notifier_abonnes_sans_risque = lambda groupes: None
+        hub_deals_db.raccourcir_liens = lambda paires: {}
+        hub_deals_db.log = lambda msg: None
+        appels = []
+        hub_deals_db.publier_page_sans_risque = \
+            lambda groupes, quand: appels.append((groupes, quand))
+        return sauve, appels
+
+    def test_verifier_et_notifier_anomalies_publie_sans_aucune_affaire(self):
+        """Cable le vrai chemin, branche « aucune anomalie » : la page
+        doit quand meme etre publiee, sinon elle reste figee sur les
+        prix de la veille sans le dire. Sans ce test, supprimer l'appel
+        a publier_page_sans_risque dans cette branche ne ferait echouer
+        aucun test."""
+        sauve, appels = self._piloter_le_releve([])
+        try:
+            hub_deals_db.verifier_et_notifier_anomalies(None, QUAND)
+        finally:
+            for n, v in sauve.items():
+                setattr(hub_deals_db, n, v)
+
+        self.assertEqual(appels, [([], QUAND)])
+
+    def test_verifier_et_notifier_anomalies_publie_avec_les_groupes(self):
+        """Cable le vrai chemin, branche normale : la publication doit
+        recevoir les affaires du jour regroupees, pas une liste vide.
+        Sans ce test, supprimer l'appel a publier_page_sans_risque en
+        fin de fonction ne ferait echouer aucun test."""
+        base = {"destination": "Rome", "hub": "Abidjan", "prix_actuel": 900.0,
+                "moyenne_historique": 1000.0, "baisse_pct": 10.0,
+                "economie": 100.0, "rabattement_mesure": None,
+                "lien": "/search/ABJ1"}
+        anomalies = [dict(base, ville_depart="Dakar")]
+        sauve, appels = self._piloter_le_releve(anomalies)
+        try:
+            hub_deals_db.verifier_et_notifier_anomalies(None, QUAND)
+        finally:
+            for n, v in sauve.items():
+                setattr(hub_deals_db, n, v)
+
+        self.assertEqual(len(appels), 1)
+        groupes, quand = appels[0]
+        self.assertEqual(quand, QUAND)
+        self.assertTrue(groupes)  # les affaires du jour, pas une liste vide
