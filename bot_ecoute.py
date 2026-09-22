@@ -94,9 +94,13 @@ def executer_actions(token, actions, appeler_fn) -> None:
 def _envoi(chat_id, texte, clavier=False) -> dict:
     action = {"methode": "sendMessage", "chat_id": chat_id, "text": texte}
     if clavier:
+        # VILLES_PROPOSEES et non NOMS_AFFICHES : cette derniere reste la
+        # table des villes CONNUES, dont celles ou un abonne est deja
+        # inscrit. Voir la mesure du 2026-09-22 dans abonnes.py.
         action["reply_markup"] = {"inline_keyboard": [
-            [{"text": nom, "callback_data": f"ville:{cle}"}]
-            for cle, nom in abonnes.NOMS_AFFICHES.items()]}
+            [{"text": abonnes.NOMS_AFFICHES[cle],
+              "callback_data": f"ville:{cle}"}]
+            for cle in abonnes.VILLES_PROPOSEES]}
     return action
 
 
@@ -110,7 +114,10 @@ def _traiter_bouton(conn, cq: dict, quand: str):
         return actions + [_envoi(chat_id, MSG_STOP)], f"bouton refuse (desabonne) chat_id={chat_id}"
     data = cq.get("data") or ""
     ville = data[len("ville:"):] if data.startswith("ville:") else None
-    if ville not in abonnes.NOMS_AFFICHES:
+    # on valide contre les villes PROPOSEES : Telegram garde les anciens
+    # messages indefiniment, et un clavier d'avant le 2026-09-22 reste
+    # cliquable dans l'historique de la conversation.
+    if ville not in abonnes.VILLES_PROPOSEES:
         return actions, f"bouton inconnu chat_id={chat_id}"
     abonnes.choisir_ville(conn, chat_id, ville, quand)
     return actions + [_envoi(chat_id, msg_confirmation(ville))], f"ville {ville} chat_id={chat_id}"

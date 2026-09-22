@@ -35,6 +35,34 @@ NOMS_AFFICHES = {
     "Johannesburg": "Johannesburg",
 }
 
+# Villes PROPOSEES a l'inscription -- sous-ensemble de NOMS_AFFICHES, qui
+# reste la table des villes CONNUES (nom affiche, valeur stockee valable).
+#
+# Les deux listes ont longtemps ete la meme, et elles ne peuvent plus
+# l'etre : mesure du 2026-09-22, 114 releves rejoues avec le vrai
+# detecteur, chaque date ne voyant que les donnees anterieures.
+#
+#   villes rabattues vers PLUSIEURS hubs      1,6 a 2,6 affaires/releve
+#     Kinshasa 2,6 (23 % de jours muets)      21 a 38 % de jours muets
+#     Lome 2,3 (21 %)   Dakar 1,8 (38 %)
+#     Abidjan 1,7 (34 %)  Brazzaville 1,6 (34 %)
+#
+#   villes RESIDENTES (leur propre et unique hub)   0,2 a 0,7 /releve
+#     Casablanca 54 %  Le Caire 63 %  Lagos 70 %     54 a 82 % de muets
+#     Addis-Abeba 73 %  Istanbul 74 %  Paris 76 %
+#     Nairobi 81 %  Johannesburg 82 %
+#
+# Ce n'est PAS un probleme de calibrage : en retirant tout le plancher en
+# euros, les residentes ne passent que de 71 % a 65 % de jours muets,
+# pendant que les temoins ne bougent pas (1,98 -> 1,99 affaires/releve).
+# Elles n'ont que 82 routes a comparer contre 585 -- un seul point de
+# depart. Aucun seuil ne cree des routes.
+#
+# Les villes retirees restent interrogees par le releve et restent des
+# HUBS precieux pour les autres : on ne retire que la promesse d'un
+# service quotidien qu'on ne peut pas tenir.
+VILLES_PROPOSEES = ("Dakar", "Abidjan", "Lome", "Kinshasa", "Brazzaville")
+
 # garde-fou du test prive : protege si le lien d'invitation circule
 PLAFOND_ABONNES = 50
 

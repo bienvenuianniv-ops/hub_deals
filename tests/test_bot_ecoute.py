@@ -58,8 +58,11 @@ class TestCommandes(unittest.TestCase):
         self.assertIsNotNone(abonnes.trouver(self.conn, 111))
         self.assertEqual(_textes(actions), [bot_ecoute.MSG_BIENVENUE])
         boutons = actions[0]["reply_markup"]["inline_keyboard"]
+        # les villes PROPOSEES, pas toutes les villes connues : depuis le
+        # 2026-09-22 le clavier n'offre plus les villes residentes, qui se
+        # taisent 3 jours sur 4 (voir tests/test_villes_proposees.py)
         self.assertEqual({ligne[0]["callback_data"] for ligne in boutons},
-                         {f"ville:{v}" for v in abonnes.NOMS_AFFICHES})
+                         {f"ville:{v}" for v in abonnes.VILLES_PROPOSEES})
 
     def test_start_avec_un_code_faux_ou_absent(self):
         for texte in ("/start mauvais_code_2026", "/start"):
