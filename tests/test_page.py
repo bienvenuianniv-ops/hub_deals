@@ -137,7 +137,10 @@ class TestAppelsALAction(unittest.TestCase):
         lien = page.lien_action("Le Caire", self.BOT, self.CODE)
 
         self.assertIn(f"start={page.PREFIXE_ATTENTE}le_caire", lien)
-        self.assertNotIn(" ", lien[lien.index("start="):])
+        # on n'examine QUE l'URL : le libelle du bouton, lui, contient
+        # legitimement des espaces
+        url = lien.split('href="')[1].split('"')[0]
+        self.assertNotIn(" ", url[url.index("start="):])
 
     def test_sans_nom_de_bot_aucun_lien_bancal(self):
         """Des affaires sans bouton valent mieux qu'aucune page, et un
@@ -152,3 +155,11 @@ class TestAppelsALAction(unittest.TestCase):
         debut = texte.index(abonnes.NOMS_AFFICHES["Nairobi"])
         fin = texte.index("</section>", debut)
         self.assertNotIn(self.CODE, texte[debut:fin])
+
+    def test_le_libelle_du_bouton_est_du_texte_lisible(self):
+        """Le libelle s'affiche a un humain : pas d'entites a la place
+        des espaces, qui rendraient le code illisible sans rien apporter."""
+        lien = page.lien_action("Nairobi", self.BOT, self.CODE)
+
+        self.assertIn("Me prévenir", lien)
+        self.assertNotIn("&#32;", lien)
