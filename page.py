@@ -140,6 +140,30 @@ def _sans_balises(texte: str) -> str:
     return texte.replace("<i>", "").replace("</i>", "")
 
 
+# Prefixe du payload « start » qui inscrit un souhait de ville au lieu
+# d'abonner. Lu par bot_ecoute.traiter_update().
+PREFIXE_ATTENTE = "attente_"
+
+
 def lien_action(ville: str, bot: str, code: str) -> str:
-    """Provisoire : rempli par la tache 3."""
-    return ""
+    """Le bouton sous une ville, ou rien.
+
+    Sans nom de bot, on ne rend AUCUN lien : la page reste utile, et un
+    « t.me/None » serait pire que pas de bouton.
+
+    Une ville proposee mene a l'inscription ; une ville que le programme
+    ne sert pas mene a la liste d'attente -- on n'y promet pas une
+    alerte quotidienne qu'on ne tiendrait pas 3 jours sur 4.
+    """
+    if not bot:
+        return ""
+    if ville in abonnes.VILLES_PROPOSEES:
+        if not code:
+            return ""
+        cible = code
+        texte = "Recevoir&#32;ces&#32;affaires&#32;chaque&#32;jour"
+    else:
+        cible = PREFIXE_ATTENTE + hub_deals_db.etiquette_ville(ville)
+        texte = "Me&#32;prévenir&#32;quand&#32;cette&#32;ville&#32;sera&#32;couverte"
+    url = f"https://t.me/{html.escape(bot)}?start={html.escape(cible)}"
+    return f'<a class="action" href="{url}">{texte}</a>'

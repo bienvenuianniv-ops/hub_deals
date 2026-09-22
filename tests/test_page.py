@@ -112,3 +112,43 @@ class TestRendre(unittest.TestCase):
 
         avant = texte.index(abonnes.NOMS_AFFICHES["Dakar"])
         self.assertIn("Milan", texte[avant:])
+
+
+class TestAppelsALAction(unittest.TestCase):
+    QUAND = "2026-09-22T09:18:00+00:00"
+    BOT = "ianniv_vols_bot"
+    CODE = "invitation_test_2026"
+
+    def test_une_ville_abonnable_porte_le_lien_d_inscription(self):
+        lien = page.lien_action("Dakar", self.BOT, self.CODE)
+
+        self.assertIn(f"t.me/{self.BOT}?start={self.CODE}", lien)
+
+    def test_une_ville_non_abonnable_porte_le_lien_de_liste_d_attente(self):
+        lien = page.lien_action("Nairobi", self.BOT, self.CODE)
+
+        self.assertIn(f"t.me/{self.BOT}?start={page.PREFIXE_ATTENTE}nairobi",
+                      lien)
+        self.assertNotIn(self.CODE, lien)
+
+    def test_le_payload_d_attente_survit_aux_noms_composes(self):
+        """Le payload start de Telegram n'accepte que A-Za-z0-9_- :
+        « attente_Le Caire » serait rejete par Telegram."""
+        lien = page.lien_action("Le Caire", self.BOT, self.CODE)
+
+        self.assertIn(f"start={page.PREFIXE_ATTENTE}le_caire", lien)
+        self.assertNotIn(" ", lien[lien.index("start="):])
+
+    def test_sans_nom_de_bot_aucun_lien_bancal(self):
+        """Des affaires sans bouton valent mieux qu'aucune page, et un
+        lien vers t.me/None serait pire que pas de lien."""
+        texte = page.rendre([], self.QUAND, bot=None, code=self.CODE)
+
+        self.assertNotIn("t.me", texte)
+
+    def test_le_code_n_apparait_pas_pour_les_villes_non_abonnables(self):
+        texte = page.rendre([], self.QUAND, bot=self.BOT, code=self.CODE)
+
+        debut = texte.index(abonnes.NOMS_AFFICHES["Nairobi"])
+        fin = texte.index("</section>", debut)
+        self.assertNotIn(self.CODE, texte[debut:fin])
