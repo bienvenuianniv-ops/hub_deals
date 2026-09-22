@@ -93,14 +93,24 @@ class ConnexionPostgres:
         self._connexion.close()
 
 
-def ouvrir(url=None, chemin="flight_deals.db"):
+def ouvrir(url=None, chemin=None):
     """Connexion aux tables d'abonnes, tables creees si besoin.
 
-    `url` absente : SQLite dans `chemin` (tests, et secours si la base
-    distante tombe pendant une mise au point locale). `url` presente :
-    Postgres. L'environnement (HUB_DEALS_ABONNES_URL) sert de defaut.
+    `url` presente : Postgres. `chemin` present : SQLite dans ce fichier.
+    Aucun des deux : l'environnement (HUB_DEALS_ABONNES_URL) decide, et a
+    defaut le fichier local -- c'est ce que fait la production, qui
+    n'appelle ouvrir() sans argument.
+
+    Un `chemin` donne explicitement N'EST JAMAIS supplante par
+    l'environnement. Incident du 2026-09-22 : HUB_DEALS_ABONNES_URL est
+    posee sur le portable pour le releve, et toute la suite de tests
+    locale ouvrait donc la base de PRODUCTION au lieu de son fichier
+    temporaire -- 58 faux abonnes y ont ete inseres. Le defaut d'un
+    argument ne doit pas ecraser l'argument.
     """
-    url = url if url is not None else os.environ.get(URL_ENV)
+    if url is None and chemin is None:
+        url = os.environ.get(URL_ENV)
+    chemin = chemin if chemin is not None else "flight_deals.db"
     if url:
         import psycopg
         conn = ConnexionPostgres(psycopg.connect(url))

@@ -22,6 +22,19 @@ _VRAI_OUVRIR = magasin.ouvrir
 
 
 @pytest.fixture(autouse=True)
+def jamais_la_base_de_production(monkeypatch):
+    """Deuxieme verrou : la suite n'herite pas de HUB_DEALS_ABONNES_URL.
+
+    Le premier verrou est dans magasin.ouvrir(), qui ne consulte plus
+    l'environnement des qu'un chemin est donne. Celui-ci couvre le cas
+    restant : un appel sans argument, dans du code de production qu'un
+    test traverse. Un test qui veut vraiment une URL la pose lui-meme
+    dans son setUp, qui s'execute apres cette fixture.
+    """
+    monkeypatch.delenv(magasin.URL_ENV, raising=False)
+
+
+@pytest.fixture(autouse=True)
 def base_des_abonnes_en_memoire(monkeypatch):
     """magasin.ouvrir() sans argument ouvre « :memory: » et non un fichier.
 

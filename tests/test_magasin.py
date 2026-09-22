@@ -4,12 +4,17 @@ Spec : docs/superpowers/specs/2026-09-20-abonnes-hebergement-design.md
 """
 import os
 import sys
+import sqlite3
 import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import magasin
+
+# conftest remplace magasin.ouvrir pour toute la suite ; cette classe-ci
+# teste le contrat de la vraie fonction, capturee ici a l'import.
+_VRAI_OUVRIR = magasin.ouvrir
 
 
 class TestTraduction(unittest.TestCase):
@@ -206,3 +211,43 @@ class TestOuverturePostgres(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCheminExpliciteContreEnvironnement(unittest.TestCase):
+    """Un chemin explicite est une intention explicite.
+
+    Incident du 2026-09-22 : HUB_DEALS_ABONNES_URL est posee sur le
+    portable pour le releve. Toute la suite locale ouvrait donc la base
+    des abonnes de PRODUCTION au lieu du fichier temporaire demande, et y
+    a insere 58 faux abonnes. Le garde-fou de conftest ne detournait que
+    le chemin SQLite, jamais l'URL.
+    """
+
+    def setUp(self):
+        self.dossier = tempfile.TemporaryDirectory()
+        self.chemin = os.path.join(self.dossier.name, "essai.db")
+        self.ancienne = os.environ.get(magasin.URL_ENV)
+        # une URL volontairement injoignable : si ouvrir() la consulte,
+        # le test echoue par la connexion, pas par une assertion floue
+        os.environ[magasin.URL_ENV] = "postgresql://personne@127.0.0.1:1/vide?connect_timeout=1"
+
+    def tearDown(self):
+        if self.ancienne is None:
+            os.environ.pop(magasin.URL_ENV, None)
+        else:
+            os.environ[magasin.URL_ENV] = self.ancienne
+        self.dossier.cleanup()
+
+    def test_un_chemin_donne_ignore_l_url_de_l_environnement(self):
+        conn = _VRAI_OUVRIR(chemin=self.chemin)
+        try:
+            self.assertIsInstance(conn, sqlite3.Connection)
+            self.assertTrue(os.path.exists(self.chemin))
+        finally:
+            conn.close()
+
+    def test_sans_chemin_ni_url_l_environnement_reste_le_defaut(self):
+        """La production, elle, ne passe aucun argument : le repli par
+        l'environnement doit survivre a la correction."""
+        with self.assertRaises(Exception):
+            _VRAI_OUVRIR()
