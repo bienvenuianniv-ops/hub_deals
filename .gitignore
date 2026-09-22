@@ -28,3 +28,6 @@ destinations_perso.json
 # copies locales des abonnes : la seule sauvegarde de donnees
 # personnelles, qui ne doit JAMAIS partir sur le depot public
 abonnes_copies/
+
+# worktree de la branche de publication (pas du code source)
+.pages/
