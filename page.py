@@ -99,7 +99,7 @@ _SCRIPT = """
 var t=Date.parse(document.getElementById('releve').dateTime);
 var h=(Date.now()-t)/3600000;
 if(h>%d){b.textContent='Ces prix datent de plus de '+Math.floor(h/24)+
-' jour(s). Ils ont tres probablement change.';b.style.display='block';}})();
+' jour(s). Ils ont très probablement changé.';b.style.display='block';}})();
 """ % AGE_SUSPECT_HEURES
 
 

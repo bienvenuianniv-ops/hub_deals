@@ -182,7 +182,8 @@ class TestPreparationAuMomentDeLAlerte(_Base):
         hub_deals_db.verifier_et_notifier_anomalies(None, "2026-09-16")
         self.assertEqual(set(self.paires), {
             ("/search/ABJ1", "proprietaire"), ("/search/ABJ1", "dakar"),
-            ("/search/ABJ1", "lome")})
+            ("/search/ABJ1", "lome"), ("/search/ABJ1", "page_dakar"),
+            ("/search/ABJ1", "page_lome")})
 
     def test_le_proprietaire_et_les_abonnes_recoivent_le_lien_court(self):
         hub_deals_db.verifier_et_notifier_anomalies(None, "2026-09-16")

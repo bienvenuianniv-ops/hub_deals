@@ -507,12 +507,17 @@ def preparer_liens_courts(groupes: list) -> None:
     """Remplit LIENS_COURTS pour les liens que le releve va envoyer : celui
     du proprietaire (premier de chaque groupe) et celui de chaque ville
     (messages des abonnes). Ne leve jamais."""
+    import page
     global LIENS_COURTS
     LIENS_COURTS = {}
     paires = []
     for groupe in groupes:
         paires.append((groupe[0]["lien"], "proprietaire"))
         paires.extend((a["lien"], etiquette_ville(a["ville_depart"])) for a in groupe)
+        # la page publique a ses propres etiquettes : c'est ce qui rendra
+        # son trafic distinguable de celui du bot dans Travelpayouts
+        paires.extend((a["lien"], page.etiquette_page(a["ville_depart"]))
+                      for a in groupe)
     try:
         LIENS_COURTS = raccourcir_liens(paires)
     except Exception as e:
