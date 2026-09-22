@@ -66,3 +66,49 @@ class TestBlocVille(unittest.TestCase):
 
         self.assertNotIn("<script>", bloc)
         self.assertIn(html.escape("<script>x</script>"), bloc)
+
+
+class TestRendre(unittest.TestCase):
+    QUAND = "2026-09-22T09:18:00+00:00"
+
+    def test_les_treize_villes_sont_presentes(self):
+        """Masquer une ville vide laisserait croire qu'elle n'est pas
+        couverte du tout."""
+        html_page = page.rendre([], self.QUAND)
+
+        for ville in abonnes.NOMS_AFFICHES.values():
+            self.assertIn(ville, html_page)
+
+    def test_une_ville_sans_affaire_le_dit(self):
+        html_page = page.rendre([], self.QUAND)
+
+        self.assertIn("Rien aujourd'hui", html_page)
+
+    def test_la_mention_de_prix_est_presente(self):
+        """Regle Travelpayouts : ne jamais presenter une remise comme
+        garantie. Les prix viennent d'un cache pouvant aller a 7 jours."""
+        texte = page.rendre([], self.QUAND)
+
+        self.assertIn("vérifie", texte.lower())
+
+    def test_la_date_du_releve_est_ecrite_en_clair(self):
+        """Elle doit se lire SANS JavaScript : c'est le seul garde-fou
+        contre un prix de trois jours pris pour celui du jour."""
+        texte = page.rendre([], self.QUAND)
+
+        self.assertIn("2026-09-22", texte)
+
+    def test_la_page_ne_contient_aucune_donnee_personnelle(self):
+        groupes = [[_affaire()]]
+
+        texte = page.rendre(groupes, self.QUAND)
+
+        for interdit in ("chat_id", "8296006641", "Mariama", "abonnes"):
+            self.assertNotIn(interdit, texte)
+
+    def test_une_affaire_apparait_sous_sa_ville(self):
+        texte = page.rendre([[_affaire(ville="Dakar", destination="Milan")]],
+                            self.QUAND)
+
+        avant = texte.index(abonnes.NOMS_AFFICHES["Dakar"])
+        self.assertIn("Milan", texte[avant:])
