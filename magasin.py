@@ -55,6 +55,12 @@ _DDL = {
         CREATE TABLE IF NOT EXISTS etat_bot (
             cle    TEXT PRIMARY KEY,
             valeur TEXT NOT NULL
+        )""", """
+        CREATE TABLE IF NOT EXISTS villes_souhaitees (
+            chat_id  INTEGER NOT NULL,     -- BIGINT en postgres
+            ville    TEXT NOT NULL,
+            quand    TEXT NOT NULL,
+            PRIMARY KEY (chat_id, ville)
         )"""),
     "postgres": ("""
         CREATE TABLE IF NOT EXISTS abonnes (
@@ -69,6 +75,12 @@ _DDL = {
         CREATE TABLE IF NOT EXISTS etat_bot (
             cle    TEXT PRIMARY KEY,
             valeur TEXT NOT NULL
+        )""", """
+        CREATE TABLE IF NOT EXISTS villes_souhaitees (
+            chat_id  BIGINT NOT NULL,     -- INTEGER en sqlite
+            ville    TEXT NOT NULL,
+            quand    TEXT NOT NULL,
+            PRIMARY KEY (chat_id, ville)
         )"""),
 }
 
@@ -165,10 +177,10 @@ def _tables_manquantes(conn, dialecte: str) -> bool:
     if dialecte == "sqlite":
         trouvees = conn.execute(
             "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' "
-            "AND name IN ('abonnes', 'etat_bot')").fetchone()[0]
+            "AND name IN ('abonnes', 'etat_bot', 'villes_souhaitees')").fetchone()[0]
     else:
         trouvees = conn.execute(
             "SELECT COUNT(*) FROM information_schema.tables "
             "WHERE table_schema = current_schema() "
-            "AND table_name IN ('abonnes', 'etat_bot')").fetchone()[0]
-    return trouvees < 2
+            "AND table_name IN ('abonnes', 'etat_bot', 'villes_souhaitees')").fetchone()[0]
+    return trouvees < 3

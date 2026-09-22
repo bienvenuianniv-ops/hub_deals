@@ -128,9 +128,12 @@ def ecrire_instantane(conn, dossier: str, quand: str) -> dict:
             precedent = _lignes_de(os.path.join(dossier, nom))
             break
 
+    import souhaits
+
     lignes = instantane(conn)
     chemin = os.path.join(dossier, f"abonnes-{quand[:10].replace('-', '')}.json")
-    contenu = {"pris_le": quand, "lignes": len(lignes), "abonnes": lignes}
+    contenu = {"pris_le": quand, "lignes": len(lignes), "abonnes": lignes,
+               "villes_souhaitees": souhaits.instantane(conn)}
 
     # ecriture atomique : un processus tue en plein milieu ne doit pas
     # laisser une copie a moitie ecrite a la place d'une copie valable

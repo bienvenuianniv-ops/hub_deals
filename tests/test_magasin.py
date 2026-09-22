@@ -131,9 +131,10 @@ class TestOuverturePostgres(unittest.TestCase):
     def test_cree_les_tables(self):
         nb = self.conn.execute(
             "SELECT COUNT(*) FROM information_schema.tables "
-            "WHERE table_name IN ('abonnes', 'etat_bot')").fetchone()[0]
+            "WHERE table_name IN ('abonnes', 'etat_bot', "
+            "'villes_souhaitees')").fetchone()[0]
 
-        self.assertEqual(nb, 2)
+        self.assertEqual(nb, 3)
 
     def test_un_chat_id_au_dela_de_deux_milliards_passe(self):
         """INTEGER aurait leve ici, et seulement ici : le compte test du
@@ -184,7 +185,8 @@ class TestOuverturePostgres(unittest.TestCase):
         proprietaire.execute("DROP ROLE IF EXISTS essai_restreint")
         proprietaire.execute(f"CREATE ROLE essai_restreint LOGIN PASSWORD '{mdp}'")
         proprietaire.execute(
-            "GRANT SELECT, INSERT, UPDATE ON abonnes, etat_bot TO essai_restreint")
+            "GRANT SELECT, INSERT, UPDATE ON abonnes, etat_bot, "
+            "villes_souhaitees TO essai_restreint")
         proprietaire.commit()
         restreinte = self.url.split("://", 1)[1].split("@", 1)[1]
 
@@ -194,7 +196,8 @@ class TestOuverturePostgres(unittest.TestCase):
             conn.close()
         finally:
             proprietaire.execute(
-                "REVOKE ALL ON abonnes, etat_bot FROM essai_restreint")
+                "REVOKE ALL ON abonnes, etat_bot, villes_souhaitees "
+                "FROM essai_restreint")
             proprietaire.execute("DROP ROLE IF EXISTS essai_restreint")
             proprietaire.commit()
             proprietaire.close()
