@@ -190,6 +190,70 @@ Retour arrière, si le webhook devait être abandonné : `deleteWebhook`, puis
 `git revert` du commit qui a retiré le long polling — c'est lui qui remet la boucle, le
 verrou anti-veille et les fichiers de tâche.
 
+## Page publique quotidienne
+
+Affichage quotidien des bonnes affaires, servi par GitHub Pages à
+`https://bienvenuianniv-ops.github.io/hub_deals/`.
+
+Chaque jour à la fin du relevé, le script `hub_deals_db.publier_page()` écrit
+un fichier `index.html` statique dans le worktree `.pages/` (ignoré par git,
+comme `.sauvegardes/`) et le pousse sur la branche `gh-pages`. **La branche
+`gh-pages` est publique et ne doit contenir aucune donnée personnelle.**
+
+La page affiche les treize villes, chacune avec ses affaires du jour, ou
+« Rien aujourd'hui ». Mobile d'abord, CSS en ligne, aucune dépendance. Un
+script en ligne détecte les prix de plus de 36 heures et affiche un
+avertissement au visiteur.
+
+Chaque affaire porte deux éléments de contexte pour le visiteur : le type de
+trajet (vol direct ou via un hub de correspondance) et l'économie en euros.
+Les liens sont marqués avec une étiquette Sous-ID propre à la page
+(`page_dakar`) pour distinguer ce canal de celui du bot (`dakar`) dans les
+statistiques Travelpayouts.
+
+| Variable | Rôle |
+|---|---|
+| `HUB_DEALS_BOT_USERNAME` | nom public du bot Telegram (ex. `ianniv_vols_bot`). Absent : la page se publie quand même, mais sans ses boutons d'action |
+
+**La page ne porte jamais le code d'invitation** : elle est publique, et
+l'historique de `gh-pages` aussi — un code publié une fois le reste pour
+toujours. Sous une ville servie, le bouton est « Demander une invitation »
+(liste d'attente, le bot répond `MSG_DEMANDE`) ; le propriétaire invite à la
+main les personnes notées dans `villes_souhaitees`.
+
+### Liste d'attente : villes souhaitées
+
+> **Migration à faire UNE fois, AVANT le déploiement Render** — le rôle du bot
+> n'a pas le droit de créer de table, et sans elle le bot, l'envoi aux abonnés
+> et leur sauvegarde échouent. Console SQL Neon, rôle `neondb_owner` :
+>
+> ```sql
+> CREATE TABLE IF NOT EXISTS villes_souhaitees (
+>     chat_id BIGINT NOT NULL,
+>     ville   TEXT NOT NULL,
+>     quand   TEXT NOT NULL,
+>     PRIMARY KEY (chat_id, ville)
+> );
+> GRANT SELECT, INSERT ON villes_souhaitees TO hub_deals_bot;
+> ```
+>
+> Vérifier ensuite avec le rôle du bot : `magasin.ouvrir()` doit réussir et
+> `souhaits.compter(conn)` rendre `{}`.
+
+Une ville peut être demandée par des visiteurs de la page, même si le
+programme ne la sert pas encore. Cliquer sur un lien
+`https://t.me/<bot>?start=attente_<étiquette>` depuis la page enregistre le
+souhait dans la table `villes_souhaitees`, **sans abonner ni consommer le
+plafond** (`abonnes.PLAFOND_ABONNES`).
+
+La table `villes_souhaitees` porte des `chat_id` Telegram : elle est
+**privée** (dans `sauvegarde.TABLES_PRIVEES`) et ne sort jamais dans le dump
+distant. Lire les souhaits :
+
+```bash
+python -c "import souhaits, magasin; conn = magasin.ouvrir(); print(souhaits.compter(conn))"
+```
+
 ## Sauvegardes
 
 Deux mécanismes, pour **deux risques différents** :

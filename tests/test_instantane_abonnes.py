@@ -142,3 +142,25 @@ class TestInstantane(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSouhaitsNeBloquentPasLaCopie(TestInstantane):
+    """Relecture du 2026-09-26 : villes_souhaitees est une table annexe.
+    Un droit manquant sur elle ne doit pas priver les abonnes de copie."""
+
+    def test_copie_ecrite_meme_si_les_souhaits_sont_illisibles(self):
+        import souhaits
+        vrai = souhaits.instantane
+
+        def refuse(conn):
+            raise RuntimeError("permission denied for table villes_souhaitees")
+        souhaits.instantane = refuse
+        try:
+            rapport = abonnes.ecrire_instantane(
+                self.conn, self.copies, "2026-09-22T13:00:00+00:00")
+        finally:
+            souhaits.instantane = vrai
+
+        contenu = self._lire(rapport["chemin"])
+        self.assertEqual(contenu["lignes"], 2)
+        self.assertIsNone(contenu["villes_souhaitees"])

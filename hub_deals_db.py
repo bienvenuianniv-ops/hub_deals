@@ -513,6 +513,15 @@ def preparer_liens_courts(groupes: list) -> None:
     for groupe in groupes:
         paires.append((groupe[0]["lien"], "proprietaire"))
         paires.extend((a["lien"], etiquette_ville(a["ville_depart"])) for a in groupe)
+    # la page publique a ses propres etiquettes : c'est ce qui rendra son
+    # trafic distinguable de celui du bot dans Travelpayouts. Import DANS
+    # un try : une page cassee coute ses liens courts, pas les alertes.
+    try:
+        import page
+        paires.extend((a["lien"], page.etiquette_page(a["ville_depart"]))
+                      for groupe in groupes for a in groupe)
+    except Exception as e:
+        log(f"   -> liens de la page ignores : {e}")
     try:
         LIENS_COURTS = raccourcir_liens(paires)
     except Exception as e:
@@ -958,6 +967,72 @@ def sauvegarder_et_alerter(conn: sqlite3.Connection,
     return ok
 
 
+def publier_page(groupes: list, quand: str, dossier: str = ".pages",
+                 executer=None) -> bool:
+    """Ecrit la page du jour dans le worktree gh-pages et la pousse.
+
+    Meme patron que sauvegarder_et_alerter, et pour les memes raisons :
+    la tache tourne sans personne devant l'ecran, donc saisie interdite
+    et delai maximal sur chaque commande git (reproduit le 2026-09-13,
+    ou un push bloque a fait sauter trois jours de releves).
+
+    On n'alerte QUE l'echec : une « page publiee » quotidienne
+    deviendrait un bruit qu'on cesse de lire.
+
+    Ne leve jamais : le releve est deja enregistre a ce stade.
+    """
+    try:
+        import page
+        from sauvegarde import _executer, _fin, _horodatage
+        executer = executer or _executer
+
+        chemin = os.path.join(dossier, "index.html")
+        with open(chemin, "w", encoding="utf-8", newline="\n") as f:
+            f.write(page.rendre(groupes, quand,
+                                bot=os.environ.get("HUB_DEALS_BOT_USERNAME")))
+
+        code, sortie = executer(["git", "add", "index.html"], cwd=dossier)
+        if code != 0:
+            raise RuntimeError(f"add : {_fin(sortie)}")
+
+        code, _ = executer(["git", "diff", "--cached", "--quiet"], cwd=dossier)
+        if code == 0:
+            log("   -> page publique : inchangee, rien a pousser")
+            return True
+
+        code, sortie = executer(
+            ["git", "commit", "-m", f"page du {_horodatage()}"], cwd=dossier)
+        if code != 0:
+            raise RuntimeError(f"commit : {_fin(sortie)}")
+
+        code, sortie = executer(["git", "push", "origin", "gh-pages"],
+                                cwd=dossier)
+        if code != 0:
+            raise RuntimeError(f"push : {_fin(sortie)}")
+
+        log("   -> page publique poussee")
+        return True
+
+    except Exception as e:
+        log(f"   -> page publique impossible : {e}")
+        envoye = envoyer_telegram(
+            "<b>Probleme technique -- page publique non mise a jour</b>\n\n"
+            "Le releve du jour est bien enregistre, mais la page publique "
+            "n'a pas pu etre publiee.\n\n"
+            "Les gens qui ouvrent le lien voient encore les prix d'hier.\n\n"
+            f"Detail : {e}"
+        )
+        log("   -> ALERTE page envoyee" if envoye
+            else "   -> ALERTE page NON envoyee")
+        return False
+
+
+def publier_page_sans_risque(groupes: list, quand: str) -> None:
+    """Appelee par le releve. publier_page n'echoue deja jamais ; cette
+    enveloppe existe pour que le raccordement soit testable sans git."""
+    publier_page(groupes, quand)
+
+
 def grouper_anomalies(anomalies: list) -> list:
     """
     Regroupe les anomalies par affaire reelle : le troncon hub -> destination.
@@ -1149,6 +1224,9 @@ def verifier_et_notifier_anomalies(conn: sqlite3.Connection, date_collecte: str)
 
     if not anomalies:
         log("Aucune anomalie a notifier pour ce releve.")
+        # la page doit quand meme etre rafraichie : sinon elle reste sur
+        # les prix de la veille sans le dire
+        publier_page_sans_risque([], date_collecte)
         return
 
     # cout reel du trajet vers le hub, mesure maintenant : la table
@@ -1192,10 +1270,17 @@ def verifier_et_notifier_anomalies(conn: sqlite3.Connection, date_collecte: str)
             f"pour {len(anomalies)} anomalie(s).")
 
     notifier_abonnes_sans_risque(groupes)
+    publier_page_sans_risque(groupes, date_collecte)
 
 
 if __name__ == "__main__":
     import sys
+    # Lance comme script, ce fichier est le module `__main__`. Sans cette
+    # ligne, abonnes.py et page.py, qui font « import hub_deals_db », en
+    # chargeraient une SECONDE copie, dont LIENS_COURTS reste vide : les
+    # abonnes recevaient des liens directs, que Travelpayouts ne compte
+    # pas (relecture du 2026-09-26). A faire avant tout autre import.
+    sys.modules["hub_deals_db"] = sys.modules[__name__]
     # sous pythonw.exe, rien ne s'affiche : tout plantage doit aller au journal
     sys.excepthook = journaliser_plantage
 

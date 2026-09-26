@@ -17,6 +17,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import magasin
+import hub_deals_db
 
 _VRAI_OUVRIR = magasin.ouvrir
 
@@ -44,3 +45,22 @@ def base_des_abonnes_en_memoire(monkeypatch):
     monkeypatch.setattr(
         magasin, "ouvrir",
         lambda url=None, chemin=":memory:": _VRAI_OUVRIR(url=url, chemin=chemin))
+
+
+@pytest.fixture(autouse=True)
+def jamais_de_vraie_publication(monkeypatch):
+    """Depuis le 2026-09-22, verifier_et_notifier_anomalies appelle
+    publier_page_sans_risque a chaque releve, y compris sans anomalie.
+
+    Sans ce remplacement, toute la douzaine de tests qui passent par un
+    releve complet (test_abonnes, test_hub_deals_db, test_liens_courts)
+    ecrirait un index.html dans .pages/ (chemin relatif, donc dependant
+    du repertoire courant), lancerait de VRAIS `git add`/`commit`/`push`
+    sur la branche PUBLIQUE gh-pages, et en cas d'echec enverrait un
+    VRAI message Telegram -- le jeton est present sur cette machine.
+    Un test qui veut vraiment observer la publication remplace lui-meme
+    hub_deals_db.publier_page_sans_risque, comme le fait
+    tests/test_publier_page.py.
+    """
+    monkeypatch.setattr(hub_deals_db, "publier_page_sans_risque",
+                        lambda *a, **k: None)

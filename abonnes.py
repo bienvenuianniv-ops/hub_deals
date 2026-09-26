@@ -129,8 +129,18 @@ def ecrire_instantane(conn, dossier: str, quand: str) -> dict:
             break
 
     lignes = instantane(conn)
+    # table annexe : un droit manquant sur elle ne doit pas priver les
+    # abonnes, irremplacables, de leur copie (relecture du 2026-09-26)
+    try:
+        import souhaits
+        voulues = souhaits.instantane(conn)
+    except Exception:
+        voulues = None
+        if hasattr(conn, "rollback"):
+            conn.rollback()  # postgres : transaction avortee sinon
     chemin = os.path.join(dossier, f"abonnes-{quand[:10].replace('-', '')}.json")
-    contenu = {"pris_le": quand, "lignes": len(lignes), "abonnes": lignes}
+    contenu = {"pris_le": quand, "lignes": len(lignes), "abonnes": lignes,
+               "villes_souhaitees": voulues}
 
     # ecriture atomique : un processus tue en plein milieu ne doit pas
     # laisser une copie a moitie ecrite a la place d'une copie valable

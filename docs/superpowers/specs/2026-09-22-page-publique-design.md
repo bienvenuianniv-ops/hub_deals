@@ -56,7 +56,7 @@ d'affiliation, et sert d'entonnoir vers le bot pour ceux qui ont Telegram.
 | Villes sans affaire | **Affichées quand même**, avec une ligne honnête | Les masquer laisserait croire que la ville n'est pas couverte |
 | Fraîcheur | **Le jour seul**, une page réécrite chaque matin | Le plus simple à construire et à comprendre. Une archive multiplierait les fichiers pour un bénéfice non démontré |
 | Villes non abonnables | **Liste d'attente** | Enregistre la demande réelle sans promettre une alerte quotidienne qu'on ne tiendrait pas. C'est la donnée qui dira où ajouter des hubs |
-| Code d'invitation | **La page l'ouvre, assumé** | Publier le bouton Telegram publie le code. `PLAFOND_ABONNES = 50` devient le vrai garde-fou, et changer le code reste le bouton d'arrêt |
+| Code d'invitation | ~~La page l'ouvre, assumé~~ → **la page ne porte jamais le code** (décision du 2026-09-26, relecture) | L'historique public de `gh-pages` rendrait tout code publié irrévocable. Les villes servies mènent à « Demander une invitation » (liste d'attente) ; le propriétaire invite à la main |
 
 ## Architecture
 

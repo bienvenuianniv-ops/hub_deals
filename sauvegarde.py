@@ -37,7 +37,7 @@ DELAI_COMMANDE = 300   # secondes ; un push de sauvegarde en prend quelques-unes
 # Tables qui ne doivent JAMAIS sortir : le dump part sur un depot public.
 # Constate le 2026-09-20 -- chat_id Telegram et prenom de chaque abonne y
 # etaient publies deux fois par jour. Recruter, c'etait publier.
-TABLES_PRIVEES = ("abonnes", "etat_bot")
+TABLES_PRIVEES = ("abonnes", "etat_bot", "villes_souhaitees")
 
 
 def generer_dump(conn: sqlite3.Connection,
