@@ -38,7 +38,8 @@ class _Base(unittest.TestCase):
     def setUp(self):
         self._sauve = {n: getattr(hub_deals_db, n) for n in (
             "TRAVELPAYOUTS_MARKER", "TRAVELPAYOUTS_PROJET", "TOKEN", "log",
-            "LIENS_COURTS")}
+            "LIENS_COURTS", "PAUSE_AVANT_REPRISE")}
+        hub_deals_db.PAUSE_AVANT_REPRISE = 0
         hub_deals_db.TRAVELPAYOUTS_MARKER = "123456"
         hub_deals_db.TRAVELPAYOUTS_PROJET = "574520"
         hub_deals_db.TOKEN = "jeton-de-test"
@@ -118,6 +119,37 @@ class TestRaccourcirLiens(_Base):
         courts = hub_deals_db.raccourcir_liens([("/search/A1", "dakar")], poster=poster)
         self.assertEqual(courts, {})
         self.assertIn("coupure", "\n".join(self.lignes))
+
+    def test_un_lot_coupe_par_le_reseau_est_retente_une_fois(self):
+        """Releve du 2026-09-26 : une coupure de quelques secondes a laisse
+        6 liens de la page en direct, donc non comptes par Travelpayouts."""
+        coupures = [requests.ConnectionError("coupure")]
+
+        def poster(url, json=None, headers=None, timeout=None):
+            self.appels.append(json)
+            if coupures:
+                raise coupures.pop(0)
+            return _succes(json["links"])
+        courts = hub_deals_db.raccourcir_liens([("/search/A1", "dakar")], poster=poster)
+        self.assertEqual(len(courts), 1)
+        self.assertEqual(len(self.appels), 2)
+
+    def test_une_seule_reprise_pas_davantage(self):
+        def poster(url, json=None, headers=None, timeout=None):
+            self.appels.append(json)
+            raise requests.ConnectionError("coupure")
+        courts = hub_deals_db.raccourcir_liens([("/search/A1", "dakar")], poster=poster)
+        self.assertEqual(courts, {})
+        self.assertEqual(len(self.appels), 2)
+
+    def test_un_refus_http_n_est_pas_retente(self):
+        """Un 401/400 ne se corrige pas en recommencant : ce serait un
+        appel de plus pour la meme reponse."""
+        def poster(url, json=None, headers=None, timeout=None):
+            self.appels.append(json)
+            return _Reponse(401, {})
+        hub_deals_db.raccourcir_liens([("/search/A1", "dakar")], poster=poster)
+        self.assertEqual(len(self.appels), 1)
 
     def test_reponse_de_longueur_inattendue_ignoree(self):
         """L'association se fait par position : si le compte ne tombe pas

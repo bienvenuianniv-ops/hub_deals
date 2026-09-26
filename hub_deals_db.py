@@ -455,6 +455,23 @@ def url_aviasales(chemin: str, etiquette: str) -> str:
     return f"{url}?marker={TRAVELPAYOUTS_MARKER}.{etiquette}"
 
 
+# Un lot coupe par le reseau est retente UNE fois apres cette pause.
+# Releve du 2026-09-26 : une coupure de quelques secondes avait laisse
+# 6 liens en direct, donc des clics non comptes par Travelpayouts.
+PAUSE_AVANT_REPRISE = 5
+
+
+def _poster_avec_reprise(poster, *args, **kwargs):
+    """Une seule reprise, et seulement sur erreur reseau : un refus HTTP
+    ne se corrige pas en recommencant."""
+    try:
+        return poster(*args, **kwargs)
+    except requests.RequestException as e:
+        log(f"   -> liens courts : coupure reseau, nouvel essai ({e})")
+        time.sleep(PAUSE_AVANT_REPRISE)
+        return poster(*args, **kwargs)
+
+
 def raccourcir_liens(paires, poster=requests.post) -> dict:
     """
     Cree les liens courts Travelpayouts pour des paires (chemin, etiquette).
@@ -481,8 +498,9 @@ def raccourcir_liens(paires, poster=requests.post) -> dict:
                       for chemin, etiquette in lot],
         }
         try:
-            r = poster(f"{BASE_URL}/links/v1/create", json=corps,
-                       headers={"X-Access-Token": TOKEN}, timeout=20)
+            r = _poster_avec_reprise(poster, f"{BASE_URL}/links/v1/create",
+                                     json=corps, headers={"X-Access-Token": TOKEN},
+                                     timeout=20)
             if r.status_code != 200:
                 log(f"   -> liens courts refuses : HTTP {r.status_code} {r.text[:200]}")
                 continue
