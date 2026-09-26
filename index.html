@@ -2,72 +2,66 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<!-- page d'attente : retirer ce noindex quand le vrai generateur publiera -->
-<meta name="robots" content="noindex">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Bonnes affaires vol</title>
 <style>
-  :root {
-    --fond: #fbfaf8;
-    --encre: #1c1b19;
-    --doux: #6b6862;
-    --trait: #e3e0d9;
-    --accent: #1f6f5c;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --fond: #17181a;
-      --encre: #ececea;
-      --doux: #9a9792;
-      --trait: #2e3033;
-      --accent: #6fc3a8;
-    }
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    padding: 3rem 1rem;
-    background: var(--fond);
-    color: var(--encre);
-    font: 17px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
-    display: flex;
-    justify-content: center;
-  }
-  main { width: 100%; max-width: 34rem; }
-  h1 {
-    font-size: 1.5rem;
-    line-height: 1.25;
-    margin: 0 0 1.25rem;
-    letter-spacing: -0.015em;
-  }
-  p { margin: 0 0 1rem; color: var(--doux); }
-  .marque {
-    display: inline-block;
-    font-size: 0.75rem;
-    letter-spacing: 0.09em;
-    text-transform: uppercase;
-    color: var(--accent);
-    margin-bottom: 1.5rem;
-  }
-  hr { border: 0; border-top: 1px solid var(--trait); margin: 2rem 0 1.25rem; }
-  .pied { font-size: 0.85rem; color: var(--doux); }
+:root{--fond:#fbfaf8;--encre:#1c1b19;--doux:#6b6862;--trait:#e3e0d9;
+--accent:#1f6f5c;--alerte:#8a5a00;--alerte-fond:#fdf4e3}
+@media(prefers-color-scheme:dark){:root{--fond:#17181a;--encre:#ececea;
+--doux:#9a9792;--trait:#2e3033;--accent:#6fc3a8;--alerte:#f0c675;
+--alerte-fond:#2b2317}}
+*{box-sizing:border-box}
+body{margin:0;padding:1.5rem 1rem 4rem;background:var(--fond);color:var(--encre);
+font:17px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:38rem;margin:0 auto}
+h1{font-size:1.4rem;letter-spacing:-.015em;margin:0 0 .25rem}
+.date{color:var(--doux);font-size:.9rem;margin:0 0 2rem}
+h2{font-size:1rem;letter-spacing:.02em;margin:2.25rem 0 .6rem;
+padding-bottom:.35rem;border-bottom:1px solid var(--trait)}
+.affaires{list-style:none;margin:0;padding:0}
+.affaire a{display:grid;grid-template-columns:1fr auto;gap:.1rem .75rem;
+padding:.7rem 0;text-decoration:none;color:inherit;
+border-bottom:1px solid var(--trait)}
+.dest{font-weight:600}
+.prix{font-weight:600;text-align:right;color:var(--accent)}
+.trajet,.gain{font-size:.85rem;color:var(--doux)}
+.gain{text-align:right}
+.rien{color:var(--doux);font-size:.9rem;margin:.3rem 0 0}
+.action{display:inline-block;margin:.7rem 0 0;padding:.5rem .9rem;
+border:1px solid var(--accent);border-radius:999px;color:var(--accent);
+text-decoration:none;font-size:.85rem}
+.vieux{display:none;background:var(--alerte-fond);color:var(--alerte);
+padding:.8rem 1rem;border-radius:.5rem;margin:0 0 1.5rem;font-size:.9rem}
+.pied{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--trait);
+color:var(--doux);font-size:.85rem}
 </style>
 </head>
 <body>
 <main>
-  <span class="marque">Bonnes affaires vol</span>
-  <h1>Cette page n'est pas encore en service.</h1>
-  <p>
-    Elle affichera bientôt les baisses de prix repérées chaque jour au départ
-    de plusieurs villes d'Afrique et d'Europe — sans inscription, sans
-    application.
-  </p>
-  <p>Reviens dans quelques jours.</p>
-  <hr>
-  <p class="pied">
-    Les prix sont relevés automatiquement et peuvent avoir changé :
-    vérifie toujours avant de réserver.
-  </p>
+<h1>25 bonnes affaires aujourd'hui</h1>
+<p class="date">Relevé du <time id="releve" datetime="2026-09-26T13:00:06Z">2026-09-26</time></p>
+<p class="vieux" id="vieux"></p>
+<section><h2>Kinshasa</h2><ul class="affaires"><li class="affaire"><a href="https://aviasales.tpk.ro/pEQKgsxI" rel="nofollow sponsored"><span class="dest">Pekin</span><span class="trajet">via Lagos</span><span class="prix">1525€</span><span class="gain">−15 % · 278€ de moins</span></a></li><li class="affaire"><a href="https://aviasales.tpk.ro/DMVuFhuW" rel="nofollow sponsored"><span class="dest">Barcelone</span><span class="trajet">via Nairobi</span><span class="prix">1006€</span><span class="gain">−13 % · 156€ de moins</span></a></li><li class="affaire"><a href="https://aviasales.tpk.ro/RogHrOxk" rel="nofollow sponsored"><span class="dest">Casablanca</span><span class="trajet">via Lagos</span><span class="prix">1227€</span><span class="gain">−10 % · 139€ de moins</span></a></li><li class="affaire"><a href="https://aviasales.tpk.ro/jWxnJNeG" rel="nofollow sponsored"><span class="dest">Istanbul</span><span class="trajet">vol direct</span><span class="prix">590€</span><span class="gain">−17 % · 119€ de moins</span></a></li><li class="affaire"><a href="https://www.aviasales.com/search/LOS2312MAD1?marker=753284.page_kinshasa" rel="nofollow sponsored"><span class="dest">Madrid</span><span class="trajet">via Lagos</span><span class="prix">1248€</span><span class="gain">−7 % · 99€ de moins</span></a></li></ul><a class="action" href="https://t.me/ianniv_vols_bot?start=attente_kinshasa">Demander une invitation</a></section>
+<section><h2>Lomé</h2><ul class="affaires"><li class="affaire"><a href="https://aviasales.tpk.ro/BvgTIQJ7" rel="nofollow sponsored"><span class="dest">Pekin</span><span class="trajet">via Lagos</span><span class="prix">1208€</span><span class="gain">−19 % · 278€ de moins</span></a></li><li class="affaire"><a href="https://aviasales.tpk.ro/k3KDVmEw" rel="nofollow sponsored"><span class="dest">Barcelone</span><span class="trajet">via Nairobi</span><span class="prix">1162€</span><span class="gain">−12 % · 156€ de moins</span></a></li><li class="affaire"><a href="https://aviasales.tpk.ro/RJgobhE9" rel="nofollow sponsored"><span class="dest">Casablanca</span><span class="trajet">via Lagos</span><span class="prix">910€</span><span class="gain">−13 % · 139€ de moins</span></a></li><li class="affaire"><a href="https://www.aviasales.com/search/LOS2312MAD1?marker=753284.page_lome" rel="nofollow sponsored"><span class="dest">Madrid</span><span class="trajet">via Lagos</span><span class="prix">931€</span><span class="gain">−10 % · 99€ de moins</span></a></li></ul><a class="action" href="https://t.me/ianniv_vols_bot?start=attente_lome">Demander une invitation</a></section>
+<section><h2>Dakar</h2><ul class="affaires"><li class="affaire"><a href="https://aviasales.tpk.ro/xz5fSiJ2" rel="nofollow sponsored"><span class="dest">Pekin</span><span class="trajet">via Lagos</span><span class="prix">1668€</span><span class="gain">−14 % · 278€ de moins</span></a></li><li class="affaire"><a href="https://aviasales.tpk.ro/MBsXdANb" rel="nofollow sponsored"><span class="dest">Barcelone</span><span class="trajet">via Nairobi</span><span class="prix">979€</span><span class="gain">−14 % · 156€ de moins</span></a></li><li class="affaire"><a href="https://aviasales.tpk.ro/Cy9X3GS1" rel="nofollow sponsored"><span class="dest">Casablanca</span><span class="trajet">via Lagos</span><span class="prix">1370€</span><span class="gain">−10 % · 144€ de moins</span></a></li><li class="affaire"><a href="https://www.aviasales.com/search/LOS2312MAD1?marker=753284.page_dakar" rel="nofollow sponsored"><span class="dest">Madrid</span><span class="trajet">via Lagos</span><span class="prix">1391€</span><span class="gain">−7 % · 99€ de moins</span></a></li></ul><a class="action" href="https://t.me/ianniv_vols_bot?start=attente_dakar">Demander une invitation</a></section>
+<section><h2>Abidjan</h2><ul class="affaires"><li class="affaire"><a href="https://aviasales.tpk.ro/oj5B1kAC" rel="nofollow sponsored"><span class="dest">Pekin</span><span class="trajet">via Lagos</span><span class="prix">1701€</span><span class="gain">−14 % · 278€ de moins</span></a></li><li class="affaire"><a href="https://aviasales.tpk.ro/UteBOILm" rel="nofollow sponsored"><span class="dest">Barcelone</span><span class="trajet">via Nairobi</span><span class="prix">1362€</span><span class="gain">−10 % · 156€ de moins</span></a></li><li class="affaire"><a href="https://aviasales.tpk.ro/47QLG7Ll" rel="nofollow sponsored"><span class="dest">Casablanca</span><span class="trajet">via Lagos</span><span class="prix">1403€</span><span class="gain">−9 % · 144€ de moins</span></a></li><li class="affaire"><a href="https://www.aviasales.com/search/LOS2312MAD1?marker=753284.page_abidjan" rel="nofollow sponsored"><span class="dest">Madrid</span><span class="trajet">via Lagos</span><span class="prix">1424€</span><span class="gain">−6 % · 99€ de moins</span></a></li></ul><a class="action" href="https://t.me/ianniv_vols_bot?start=attente_abidjan">Demander une invitation</a></section>
+<section><h2>Brazzaville</h2><ul class="affaires"><li class="affaire"><a href="https://aviasales.tpk.ro/u32QpHuK" rel="nofollow sponsored"><span class="dest">Pekin</span><span class="trajet">via Lagos</span><span class="prix">1771€</span><span class="gain">−14 % · 278€ de moins</span></a></li><li class="affaire"><a href="https://aviasales.tpk.ro/JG7NtH2X" rel="nofollow sponsored"><span class="dest">Barcelone</span><span class="trajet">via Nairobi</span><span class="prix">1449€</span><span class="gain">−10 % · 156€ de moins</span></a></li><li class="affaire"><a href="https://aviasales.tpk.ro/pCHd5Tks" rel="nofollow sponsored"><span class="dest">Casablanca</span><span class="trajet">via Lagos</span><span class="prix">1473€</span><span class="gain">−9 % · 144€ de moins</span></a></li></ul><a class="action" href="https://t.me/ianniv_vols_bot?start=attente_brazzaville">Demander une invitation</a></section>
+<section><h2>Casablanca</h2><ul class="affaires"><li class="affaire"><a href="https://www.aviasales.com/search/CMN1211MIL1?marker=753284.page_casablanca" rel="nofollow sponsored"><span class="dest">Milan</span><span class="trajet">vol direct</span><span class="prix">118€</span><span class="gain">−18 % · 25€ de moins</span></a></li></ul><a class="action" href="https://t.me/ianniv_vols_bot?start=attente_casablanca">Me prévenir quand cette ville sera couverte</a></section>
+<section><h2>Le Caire</h2><p class="rien">Rien aujourd'hui au départ de Le Caire.</p><a class="action" href="https://t.me/ianniv_vols_bot?start=attente_le_caire">Me prévenir quand cette ville sera couverte</a></section>
+<section><h2>Istanbul</h2><p class="rien">Rien aujourd'hui au départ de Istanbul.</p><a class="action" href="https://t.me/ianniv_vols_bot?start=attente_istanbul">Me prévenir quand cette ville sera couverte</a></section>
+<section><h2>Lagos</h2><ul class="affaires"><li class="affaire"><a href="https://aviasales.tpk.ro/PDkRWzU0" rel="nofollow sponsored"><span class="dest">Pekin</span><span class="trajet">vol direct</span><span class="prix">895€</span><span class="gain">−24 % · 278€ de moins</span></a></li><li class="affaire"><a href="https://aviasales.tpk.ro/RZlk34DS" rel="nofollow sponsored"><span class="dest">Casablanca</span><span class="trajet">vol direct</span><span class="prix">597€</span><span class="gain">−19 % · 144€ de moins</span></a></li><li class="affaire"><a href="https://www.aviasales.com/search/LOS2312MAD1?marker=753284.page_lagos" rel="nofollow sponsored"><span class="dest">Madrid</span><span class="trajet">vol direct</span><span class="prix">618€</span><span class="gain">−14 % · 99€ de moins</span></a></li></ul><a class="action" href="https://t.me/ianniv_vols_bot?start=attente_lagos">Me prévenir quand cette ville sera couverte</a></section>
+<section><h2>Addis-Abeba</h2><p class="rien">Rien aujourd'hui au départ de Addis-Abeba.</p><a class="action" href="https://t.me/ianniv_vols_bot?start=attente_addis_abeba">Me prévenir quand cette ville sera couverte</a></section>
+<section><h2>Paris</h2><p class="rien">Rien aujourd'hui au départ de Paris.</p><a class="action" href="https://t.me/ianniv_vols_bot?start=attente_paris">Me prévenir quand cette ville sera couverte</a></section>
+<section><h2>Nairobi</h2><ul class="affaires"><li class="affaire"><a href="https://aviasales.tpk.ro/ywks0y2d" rel="nofollow sponsored"><span class="dest">Barcelone</span><span class="trajet">vol direct</span><span class="prix">479€</span><span class="gain">−24 % · 156€ de moins</span></a></li></ul><a class="action" href="https://t.me/ianniv_vols_bot?start=attente_nairobi">Me prévenir quand cette ville sera couverte</a></section>
+<section><h2>Johannesburg</h2><p class="rien">Rien aujourd'hui au départ de Johannesburg.</p><a class="action" href="https://t.me/ianniv_vols_bot?start=attente_johannesburg">Me prévenir quand cette ville sera couverte</a></section>
+<p class="pied">Prix repéré aujourd&#x27;hui, il peut avoir changé : vérifie avant de réserver.</p>
 </main>
+<script>
+(function(){var b=document.getElementById('vieux');
+var t=Date.parse(document.getElementById('releve').dateTime);
+var h=(Date.now()-t)/3600000;
+if(h>36){b.textContent='Ces prix datent de plus de '+Math.floor(h/24)+
+' jour(s). Ils ont très probablement changé.';b.style.display='block';}})();
+</script>
 </body>
 </html>
