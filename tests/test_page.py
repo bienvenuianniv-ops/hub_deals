@@ -117,24 +117,17 @@ class TestRendre(unittest.TestCase):
 class TestAppelsALAction(unittest.TestCase):
     QUAND = "2026-09-22T09:18:00+00:00"
     BOT = "ianniv_vols_bot"
-    CODE = "invitation_test_2026"
-
-    def test_une_ville_abonnable_porte_le_lien_d_inscription(self):
-        lien = page.lien_action("Dakar", self.BOT, self.CODE)
-
-        self.assertIn(f"t.me/{self.BOT}?start={self.CODE}", lien)
 
     def test_une_ville_non_abonnable_porte_le_lien_de_liste_d_attente(self):
-        lien = page.lien_action("Nairobi", self.BOT, self.CODE)
+        lien = page.lien_action("Nairobi", self.BOT)
 
         self.assertIn(f"t.me/{self.BOT}?start={page.PREFIXE_ATTENTE}nairobi",
                       lien)
-        self.assertNotIn(self.CODE, lien)
 
     def test_le_payload_d_attente_survit_aux_noms_composes(self):
         """Le payload start de Telegram n'accepte que A-Za-z0-9_- :
         « attente_Le Caire » serait rejete par Telegram."""
-        lien = page.lien_action("Le Caire", self.BOT, self.CODE)
+        lien = page.lien_action("Le Caire", self.BOT)
 
         self.assertIn(f"start={page.PREFIXE_ATTENTE}le_caire", lien)
         # on n'examine QUE l'URL : le libelle du bouton, lui, contient
@@ -145,21 +138,65 @@ class TestAppelsALAction(unittest.TestCase):
     def test_sans_nom_de_bot_aucun_lien_bancal(self):
         """Des affaires sans bouton valent mieux qu'aucune page, et un
         lien vers t.me/None serait pire que pas de lien."""
-        texte = page.rendre([], self.QUAND, bot=None, code=self.CODE)
+        texte = page.rendre([], self.QUAND, bot=None)
 
         self.assertNotIn("t.me", texte)
-
-    def test_le_code_n_apparait_pas_pour_les_villes_non_abonnables(self):
-        texte = page.rendre([], self.QUAND, bot=self.BOT, code=self.CODE)
-
-        debut = texte.index(abonnes.NOMS_AFFICHES["Nairobi"])
-        fin = texte.index("</section>", debut)
-        self.assertNotIn(self.CODE, texte[debut:fin])
 
     def test_le_libelle_du_bouton_est_du_texte_lisible(self):
         """Le libelle s'affiche a un humain : pas d'entites a la place
         des espaces, qui rendraient le code illisible sans rien apporter."""
-        lien = page.lien_action("Nairobi", self.BOT, self.CODE)
+        lien = page.lien_action("Nairobi", self.BOT)
 
         self.assertIn("Me prévenir", lien)
         self.assertNotIn("&#32;", lien)
+
+
+class TestPageSansCode(unittest.TestCase):
+    """Relecture du 2026-09-26 : la page est publique et son historique
+    git aussi. Le code d'invitation n'y figure jamais."""
+    BOT = "ianniv_vols_bot"
+
+    def test_rendre_n_accepte_plus_de_code(self):
+        with self.assertRaises(TypeError):
+            page.rendre([], "2026-09-22 13:00:00", bot=self.BOT, code="x")
+
+    def test_une_ville_proposee_mene_a_une_demande_d_invitation(self):
+        lien = page.lien_action("Dakar", self.BOT)
+
+        self.assertIn(f"t.me/{self.BOT}?start={page.PREFIXE_ATTENTE}dakar", lien)
+        self.assertIn("Demander une invitation", lien)
+
+    def test_le_code_de_l_environnement_n_apparait_nulle_part(self):
+        code = "code_secret_de_test_2026"
+        ancien = os.environ.get("HUB_DEALS_CODE_INVITATION")
+        os.environ["HUB_DEALS_CODE_INVITATION"] = code
+        try:
+            texte = page.rendre([[_affaire()]], "2026-09-22 13:00:00",
+                                bot=self.BOT)
+        finally:
+            if ancien is None:
+                del os.environ["HUB_DEALS_CODE_INVITATION"]
+            else:
+                os.environ["HUB_DEALS_CODE_INVITATION"] = ancien
+        self.assertNotIn(code, texte)
+
+
+class TestDateDuReleve(unittest.TestCase):
+    """Le releve fournit '%Y-%m-%d %H:%M:%S' en UTC (date_collecte).
+    Safari ne sait pas lire ce format (NaN : aucun bandeau jamais), les
+    autres le lisent en heure LOCALE."""
+
+    def test_l_attribut_datetime_est_iso_en_utc(self):
+        texte = page.rendre([], "2026-09-22 13:00:00")
+
+        self.assertIn('datetime="2026-09-22T13:00:00Z"', texte)
+
+    def test_une_date_deja_iso_est_conservee(self):
+        texte = page.rendre([], "2026-09-22T09:18:00+00:00")
+
+        self.assertIn('datetime="2026-09-22T09:18:00+00:00"', texte)
+
+    def test_le_bandeau_ne_s_allume_pas_chaque_jour(self):
+        """Page refaite une fois par jour, un peu apres 13 h : a 24 h le
+        bandeau s'allumerait tous les jours juste avant le releve."""
+        self.assertGreaterEqual(page.AGE_SUSPECT_HEURES, 36)

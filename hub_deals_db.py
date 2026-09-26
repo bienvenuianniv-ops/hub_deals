@@ -507,17 +507,21 @@ def preparer_liens_courts(groupes: list) -> None:
     """Remplit LIENS_COURTS pour les liens que le releve va envoyer : celui
     du proprietaire (premier de chaque groupe) et celui de chaque ville
     (messages des abonnes). Ne leve jamais."""
-    import page
     global LIENS_COURTS
     LIENS_COURTS = {}
     paires = []
     for groupe in groupes:
         paires.append((groupe[0]["lien"], "proprietaire"))
         paires.extend((a["lien"], etiquette_ville(a["ville_depart"])) for a in groupe)
-        # la page publique a ses propres etiquettes : c'est ce qui rendra
-        # son trafic distinguable de celui du bot dans Travelpayouts
+    # la page publique a ses propres etiquettes : c'est ce qui rendra son
+    # trafic distinguable de celui du bot dans Travelpayouts. Import DANS
+    # un try : une page cassee coute ses liens courts, pas les alertes.
+    try:
+        import page
         paires.extend((a["lien"], page.etiquette_page(a["ville_depart"]))
-                      for a in groupe)
+                      for groupe in groupes for a in groupe)
+    except Exception as e:
+        log(f"   -> liens de la page ignores : {e}")
     try:
         LIENS_COURTS = raccourcir_liens(paires)
     except Exception as e:
@@ -985,8 +989,7 @@ def publier_page(groupes: list, quand: str, dossier: str = ".pages",
         chemin = os.path.join(dossier, "index.html")
         with open(chemin, "w", encoding="utf-8", newline="\n") as f:
             f.write(page.rendre(groupes, quand,
-                                bot=os.environ.get("HUB_DEALS_BOT_USERNAME"),
-                                code=os.environ.get("HUB_DEALS_CODE_INVITATION")))
+                                bot=os.environ.get("HUB_DEALS_BOT_USERNAME")))
 
         code, sortie = executer(["git", "add", "index.html"], cwd=dossier)
         if code != 0:
@@ -1272,6 +1275,12 @@ def verifier_et_notifier_anomalies(conn: sqlite3.Connection, date_collecte: str)
 
 if __name__ == "__main__":
     import sys
+    # Lance comme script, ce fichier est le module `__main__`. Sans cette
+    # ligne, abonnes.py et page.py, qui font « import hub_deals_db », en
+    # chargeraient une SECONDE copie, dont LIENS_COURTS reste vide : les
+    # abonnes recevaient des liens directs, que Travelpayouts ne compte
+    # pas (relecture du 2026-09-26). A faire avant tout autre import.
+    sys.modules["hub_deals_db"] = sys.modules[__name__]
     # sous pythonw.exe, rien ne s'affiche : tout plantage doit aller au journal
     sys.excepthook = journaliser_plantage
 

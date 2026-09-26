@@ -102,6 +102,9 @@ class ConnexionPostgres:
     def commit(self):
         self._connexion.commit()
 
+    def rollback(self):
+        self._connexion.rollback()
+
     def close(self):
         self._connexion.close()
 

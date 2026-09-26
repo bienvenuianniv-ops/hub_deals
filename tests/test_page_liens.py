@@ -33,3 +33,29 @@ class TestPairesDemandees(unittest.TestCase):
         self.assertIn(("/vol/CMNMIL", page.etiquette_page("Dakar")),
                       self.demandees)
         self.assertIn(("/vol/CMNMIL", "proprietaire"), self.demandees)
+
+
+class TestPageCasseeNeCoupePasLesAlertes(unittest.TestCase):
+    """Relecture du 2026-09-26 : preparer_liens_courts promet de ne jamais
+    lever. Une page.py qui ne se charge plus ne doit pas priver le
+    proprietaire et les abonnes de leurs alertes du jour."""
+
+    def setUp(self):
+        self.vraie = hub_deals_db.raccourcir_liens
+        self.demandees = []
+        hub_deals_db.raccourcir_liens = lambda paires: (
+            self.demandees.extend(paires) or {})
+        self.page = sys.modules.get("page")
+        sys.modules["page"] = None  # « import page » leve ImportError
+
+    def tearDown(self):
+        hub_deals_db.raccourcir_liens = self.vraie
+        sys.modules["page"] = self.page
+
+    def test_ne_leve_pas_et_garde_les_liens_du_bot(self):
+        groupe = [{"ville_depart": "Dakar", "lien": "/vol/CMNMIL"}]
+
+        hub_deals_db.preparer_liens_courts([groupe])
+
+        self.assertIn(("/vol/CMNMIL", "proprietaire"), self.demandees)
+        self.assertIn(("/vol/CMNMIL", "dakar"), self.demandees)

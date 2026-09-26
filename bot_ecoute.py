@@ -33,6 +33,9 @@ MSG_STOP = "Tu es désabonné. /start pour revenir."
 MSG_AIDE = "Commandes : /ville pour changer de ville, /stop pour arrêter."
 MSG_ATTENTE = ("C'est noté. Je te préviens dès que {ville} sera couverte. "
                "En attendant, les affaires du jour sont sur la page publique.")
+MSG_DEMANDE = ("C'est noté. Le bot est pour l'instant sur invitation : je te "
+               "fais signe dès qu'une place s'ouvre pour {ville}. En attendant, "
+               "les affaires du jour sont sur la page publique.")
 
 
 def msg_confirmation(ville: str) -> str:
@@ -176,7 +179,8 @@ def traiter_update(conn, update: dict, code, quand: str):
         if ville is None:
             return [_envoi(chat_id, MSG_INVITATION)], f"attente refusee (ville inconnue) chat_id={chat_id}"
         souhaits.noter(conn, chat_id, ville, quand)
-        return ([_envoi(chat_id, MSG_ATTENTE.format(ville=abonnes.NOMS_AFFICHES[ville]))],
+        modele = MSG_DEMANDE if ville in abonnes.VILLES_PROPOSEES else MSG_ATTENTE
+        return ([_envoi(chat_id, modele.format(ville=abonnes.NOMS_AFFICHES[ville]))],
                 f"attente {ville} chat_id={chat_id}")
 
     if commande == "/start":

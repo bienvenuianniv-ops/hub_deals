@@ -202,7 +202,7 @@ comme `.sauvegardes/`) et le pousse sur la branche `gh-pages`. **La branche
 
 La page affiche les treize villes, chacune avec ses affaires du jour, ou
 « Rien aujourd'hui ». Mobile d'abord, CSS en ligne, aucune dépendance. Un
-script en ligne détecte les prix de plus de 24 heures et affiche un
+script en ligne détecte les prix de plus de 36 heures et affiche un
 avertissement au visiteur.
 
 Chaque affaire porte deux éléments de contexte pour le visiteur : le type de
@@ -214,9 +214,31 @@ statistiques Travelpayouts.
 | Variable | Rôle |
 |---|---|
 | `HUB_DEALS_BOT_USERNAME` | nom public du bot Telegram (ex. `ianniv_vols_bot`). Absent : la page se publie quand même, mais sans ses boutons d'action |
-| `HUB_DEALS_CODE_INVITATION` | code du lien d'invitation, réutilisé ici pour l'inscription depuis la page. Déjà utilisé par le bot |
+
+**La page ne porte jamais le code d'invitation** : elle est publique, et
+l'historique de `gh-pages` aussi — un code publié une fois le reste pour
+toujours. Sous une ville servie, le bouton est « Demander une invitation »
+(liste d'attente, le bot répond `MSG_DEMANDE`) ; le propriétaire invite à la
+main les personnes notées dans `villes_souhaitees`.
 
 ### Liste d'attente : villes souhaitées
+
+> **Migration à faire UNE fois, AVANT le déploiement Render** — le rôle du bot
+> n'a pas le droit de créer de table, et sans elle le bot, l'envoi aux abonnés
+> et leur sauvegarde échouent. Console SQL Neon, rôle `neondb_owner` :
+>
+> ```sql
+> CREATE TABLE IF NOT EXISTS villes_souhaitees (
+>     chat_id BIGINT NOT NULL,
+>     ville   TEXT NOT NULL,
+>     quand   TEXT NOT NULL,
+>     PRIMARY KEY (chat_id, ville)
+> );
+> GRANT SELECT, INSERT ON villes_souhaitees TO hub_deals_bot;
+> ```
+>
+> Vérifier ensuite avec le rôle du bot : `magasin.ouvrir()` doit réussir et
+> `souhaits.compter(conn)` rendre `{}`.
 
 Une ville peut être demandée par des visiteurs de la page, même si le
 programme ne la sert pas encore. Cliquer sur un lien

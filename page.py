@@ -56,7 +56,18 @@ def bloc_ville(ville: str, groupes: list) -> str:
 
 
 # Au-dela, la page affiche un bandeau : les prix ne sont plus ceux du jour.
-AGE_SUSPECT_HEURES = 24
+# 36 et non 24 : la page n'est refaite qu'une fois par jour, un peu apres
+# 13 h. A 24 h, le bandeau s'allumerait chaque jour avant le releve.
+AGE_SUSPECT_HEURES = 36
+
+
+def _iso_utc(quand: str) -> str:
+    """Le releve donne '%Y-%m-%d %H:%M:%S' en UTC (date_collecte). Safari
+    ne sait pas lire ce format (NaN : bandeau muet), les autres le lisent
+    en heure locale. On ecrit donc la forme ISO, en UTC explicite."""
+    if "T" in quand:
+        return quand
+    return quand.replace(" ", "T", 1) + "Z"
 
 _CSS = """
 :root{--fond:#fbfaf8;--encre:#1c1b19;--doux:#6b6862;--trait:#e3e0d9;
@@ -103,7 +114,7 @@ if(h>%d){b.textContent='Ces prix datent de plus de '+Math.floor(h/24)+
 """ % AGE_SUSPECT_HEURES
 
 
-def rendre(groupes: list, quand: str, bot: str = None, code: str = None) -> str:
+def rendre(groupes: list, quand: str, bot: str = None) -> str:
     """La page complete. `groupes` sort de grouper_anomalies()."""
     total = 0
     sections = []
@@ -114,7 +125,7 @@ def rendre(groupes: list, quand: str, bot: str = None, code: str = None) -> str:
         corps = (bloc_ville(ville, propres) if propres
                  else "<p class=\"rien\">Rien aujourd'hui au départ de "
                       f"{nom}.</p>")
-        action = lien_action(ville, bot, code)
+        action = lien_action(ville, bot)
         sections.append(f"<section><h2>{nom}</h2>{corps}{action}</section>")
 
     titre = ("Aucune affaire aujourd'hui" if total == 0
@@ -127,7 +138,7 @@ def rendre(groupes: list, quand: str, bot: str = None, code: str = None) -> str:
         "<title>Bonnes affaires vol</title>\n"
         f"<style>{_CSS}</style>\n</head>\n<body>\n<main>\n"
         f"<h1>{titre}</h1>\n"
-        f"<p class=\"date\">Relevé du <time id=\"releve\" datetime=\"{html.escape(quand)}\">"
+        f"<p class=\"date\">Relevé du <time id=\"releve\" datetime=\"{html.escape(_iso_utc(quand))}\">"
         f"{html.escape(quand[:10])}</time></p>\n"
         "<p class=\"vieux\" id=\"vieux\"></p>\n"
         + "\n".join(sections) +
@@ -145,25 +156,23 @@ def _sans_balises(texte: str) -> str:
 PREFIXE_ATTENTE = "attente_"
 
 
-def lien_action(ville: str, bot: str, code: str) -> str:
+def lien_action(ville: str, bot: str) -> str:
     """Le bouton sous une ville, ou rien.
 
     Sans nom de bot, on ne rend AUCUN lien : la page reste utile, et un
     « t.me/None » serait pire que pas de bouton.
 
-    Une ville proposee mene a l'inscription ; une ville que le programme
-    ne sert pas mene a la liste d'attente -- on n'y promet pas une
-    alerte quotidienne qu'on ne tiendrait pas 3 jours sur 4.
+    Le code d'invitation n'y figure JAMAIS : la page est publique, et
+    l'historique git de gh-pages aussi -- un code publie une fois le
+    reste pour toujours (relecture du 2026-09-26). Toutes les villes
+    menent donc a la liste d'attente ; le bot repond selon la ville
+    (bot_ecoute.MSG_DEMANDE pour une ville servie, MSG_ATTENTE sinon)
+    et le proprietaire invite a la main.
     """
     if not bot:
         return ""
-    if ville in abonnes.VILLES_PROPOSEES:
-        if not code:
-            return ""
-        cible = code
-        texte = "Recevoir ces affaires chaque jour"
-    else:
-        cible = PREFIXE_ATTENTE + hub_deals_db.etiquette_ville(ville)
-        texte = "Me prévenir quand cette ville sera couverte"
+    cible = PREFIXE_ATTENTE + hub_deals_db.etiquette_ville(ville)
+    texte = ("Demander une invitation" if ville in abonnes.VILLES_PROPOSEES
+             else "Me prévenir quand cette ville sera couverte")
     url = f"https://t.me/{html.escape(bot)}?start={html.escape(cible)}"
     return f'<a class="action" href="{url}">{texte}</a>'

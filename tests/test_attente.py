@@ -67,3 +67,30 @@ class TestListeDAttente(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDemandeDInvitation(unittest.TestCase):
+    """La page ne porte plus le code : pour une ville servie, son bouton
+    est une demande d'invitation (relecture du 2026-09-26)."""
+
+    def setUp(self):
+        self.conn = magasin.ouvrir(chemin=":memory:")
+
+    def tearDown(self):
+        self.conn.close()
+
+    def test_une_ville_proposee_est_notee_sans_abonner(self):
+        actions, _ = bot_ecoute.traiter_update(
+            self.conn, _start("attente_dakar"), CODE, T0)
+
+        self.assertEqual(souhaits.compter(self.conn), {"Dakar": 1})
+        self.assertIsNone(abonnes.trouver(self.conn, 111))
+        textes = [a.get("text") for a in actions]
+        self.assertIn(bot_ecoute.MSG_DEMANDE.format(ville="Dakar"), textes)
+
+    def test_on_ne_promet_pas_une_couverture_deja_acquise(self):
+        actions, _ = bot_ecoute.traiter_update(
+            self.conn, _start("attente_dakar"), CODE, T0)
+
+        self.assertFalse(any("sera couverte" in (a.get("text") or "")
+                             for a in actions))
