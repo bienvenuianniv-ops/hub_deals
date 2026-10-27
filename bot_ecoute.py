@@ -81,7 +81,9 @@ def log(message: str) -> None:
     """Journal separe de celui du releve : deux processus, deux fichiers."""
     horodatage = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     ligne = f"[{horodatage}] {masquer(message)}"
-    print(ligne)  # silencieux sous pythonw (stdout None)
+    # silencieux sous pythonw (stdout None) ; flush pour Render, ou la
+    # sortie standard est le seul journal qui survit au redemarrage
+    print(ligne, flush=True)
     with open(LOG_PATH, "a", encoding="utf-8") as f:
         f.write(ligne + "\n")
 

@@ -234,6 +234,40 @@ class TestMasquage(unittest.TestCase):
                 contenu = f.read()
         self.assertIn("essai ***", contenu)
 
+    def test_le_journal_est_vide_aussitot_sur_la_sortie_standard(self):
+        # Sur Render, la sortie standard EST le journal, et le fichier
+        # disparait au redemarrage. Sans flush, gunicorn garde la ligne en
+        # tampon : un echec de sendMessage ne laissait aucune trace lisible.
+        import io
+        import tempfile
+        from unittest import mock
+
+        class Sortie(io.StringIO):
+            vidages = 0
+
+            def flush(self):
+                Sortie.vidages += 1
+                super().flush()
+
+        sortie = Sortie()
+        with tempfile.TemporaryDirectory() as dossier, \
+             mock.patch.object(bot_ecoute, "LOG_PATH", os.path.join(dossier, "bot.txt")), \
+             mock.patch.object(sys, "stdout", sortie):
+            bot_ecoute.log("ECHEC sendMessage HTTP 403")
+        self.assertIn("ECHEC sendMessage HTTP 403", sortie.getvalue())
+        self.assertGreaterEqual(Sortie.vidages, 1)
+
+    def test_le_journal_supporte_l_absence_de_sortie_sous_pythonw(self):
+        import tempfile
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as dossier:
+            chemin = os.path.join(dossier, "bot.txt")
+            with mock.patch.object(bot_ecoute, "LOG_PATH", chemin), \
+                 mock.patch.object(sys, "stdout", None):
+                bot_ecoute.log("essai")
+            with open(chemin, encoding="utf-8") as f:
+                self.assertIn("essai", f.read())
+
 
 if __name__ == "__main__":
     unittest.main()
