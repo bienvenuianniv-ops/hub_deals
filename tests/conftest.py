@@ -16,6 +16,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import bot_ecoute
 import magasin
 import hub_deals_db
 
@@ -64,3 +65,18 @@ def jamais_de_vraie_publication(monkeypatch):
     """
     monkeypatch.setattr(hub_deals_db, "publier_page_sans_risque",
                         lambda *a, **k: None)
+
+
+@pytest.fixture(autouse=True)
+def jamais_le_vrai_journal(monkeypatch, tmp_path):
+    """Les journaux d'exploitation ne recoivent que du reel.
+
+    Le 2026-09-26 puis le 2026-10-27, test_page_liens a ecrit « liens de
+    la page ignores » dans flight_deals_log.txt : une ligne simulee
+    indiscernable d'un vrai incident de releve. Un test qui veut lire le
+    journal pose lui-meme LOG_PATH, ce qui l'emporte sur ce defaut.
+    """
+    monkeypatch.setattr(hub_deals_db, "LOG_PATH",
+                        str(tmp_path / "flight_deals_log.txt.test"))
+    monkeypatch.setattr(bot_ecoute, "LOG_PATH",
+                        str(tmp_path / "bot_ecoute_log.txt.test"))
